@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --color-ink-950: #101d2d;
+  --color-ink-900: #17283c;
+  --color-ink-800: #20354c;
+  --color-mint-500: #19a887;
+  --color-mint-600: #118a70;
+  --color-mint-50: #eefbf7;
+}
+
+:root {
+  color: #17283c;
+  background: #f4f7f9;
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 90% 0%, rgb(25 168 135 / 8%), transparent 28rem),
+    #f4f7f9;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button,
+a,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgb(25 168 135 / 28%);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(25 168 135 / 22%);
+}

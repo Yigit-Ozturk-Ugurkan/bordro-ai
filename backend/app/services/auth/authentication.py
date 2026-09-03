@@ -32,6 +32,7 @@ class AuthenticatedUser:
     roles: frozenset[UserRoleType]
     employee_id: UUID | None
     employee_organization_id: UUID | None = None
+    email: str = ""
 
 
 @dataclass(frozen=True)
@@ -176,6 +177,7 @@ class AuthenticationService:
         return AuthenticatedUser(
             id=user.id,
             organization_id=user.organization_id,
+            email=user.email,
             roles=frozenset(role.role for role in user.roles),
             employee_id=user.employee.id if user.employee is not None else None,
             employee_organization_id=(

@@ -77,6 +77,7 @@ async def current_user(
     return CurrentUserResponse(
         id=user.id,
         organization_id=user.organization_id,
+        email=user.email,
         roles=sorted(user.roles, key=lambda role: role.value),
         employee_id=user.employee_id,
     )

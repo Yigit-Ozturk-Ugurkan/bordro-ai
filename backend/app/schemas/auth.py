@@ -31,5 +31,6 @@ class TokenResponse(BaseModel):
 class CurrentUserResponse(BaseModel):
     id: UUID
     organization_id: UUID
+    email: str
     roles: list[UserRoleType]
     employee_id: UUID | None

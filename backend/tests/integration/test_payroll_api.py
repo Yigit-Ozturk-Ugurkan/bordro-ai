@@ -85,6 +85,24 @@ class TestSystemEndpoints:
         assert body["name"]
         assert body["version"]
 
+    async def test_development_cors_allows_only_configured_origin(
+        self, api_client: AsyncClient
+    ) -> None:
+        response = await api_client.options(
+            "/api/v1/auth/login",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == (
+            "http://localhost:5173"
+        )
+        assert response.headers.get("access-control-allow-credentials") is None
+
 
 class TestPayrollListAPI:
     """GET /api/v1/employees/{id}/payrolls"""

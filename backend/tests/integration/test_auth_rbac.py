@@ -178,7 +178,14 @@ class TestAuthenticationAPI:
 
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"id", "organization_id", "roles", "employee_id"}
+        assert set(body) == {
+            "id",
+            "organization_id",
+            "email",
+            "roles",
+            "employee_id",
+        }
+        assert body["email"] == DEMO_USER_EMAILS[UserRoleType.EMPLOYEE]
         assert body["roles"] == [UserRoleType.EMPLOYEE]
         assert body["employee_id"] == str(demo_employee_id)
         assert "password_hash" not in body

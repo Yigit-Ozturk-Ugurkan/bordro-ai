@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=15, ge=1, le=1440)
     refresh_token_expire_days: int = Field(default=7, ge=1, le=90)
     demo_auth_password: SecretStr | None = Field(default=None, min_length=12)
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
                     "Authentication placeholders are forbidden in production"
                 )
         return self
+
+    @property
+    def allowed_cors_origins(self) -> list[str]:
+        """Return configured explicit origins; wildcards are not accepted."""
+        origins = [origin.strip() for origin in self.cors_origins.split(",")]
+        return [origin for origin in origins if origin and origin != "*"]
 
 
 @lru_cache
