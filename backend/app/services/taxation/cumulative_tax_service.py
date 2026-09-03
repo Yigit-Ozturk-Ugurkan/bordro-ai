@@ -37,6 +37,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.money import ZERO_MONEY, quantize_money, quantize_rate
 from app.models.employee import Employee
 from app.models.organization import Organization
 from app.models.payroll import PayrollVersion
@@ -155,14 +156,21 @@ class CumulativeTaxService:
         if not 1 <= period_month <= 12:
             raise ValueError(f"period_month must be 1-12, got {period_month}")
 
-        # Step 1: Determine opening cumulative base
+        # Step 1: Determine opening cumulative base and prior cumulative tax.
+        # Monthly withholding is the increase in cumulative tax liability,
+        # not the full tax liability at the end of every month.
+        previous_record = None
         if period_month == 1:
             # January: reset to 0 (new year)
-            opening_cumulative_base = Decimal("0.00")
+            opening_cumulative_base = ZERO_MONEY
         else:
-            # Other months: get closing from previous month
-            opening_cumulative_base = self.get_latest_cumulative_base(
-                employee_id, tax_year
+            previous_record = self._get_latest_record_before_month(
+                employee_id, tax_year, period_month
+            )
+            opening_cumulative_base = (
+                previous_record.closing_cumulative_base
+                if previous_record is not None
+                else ZERO_MONEY
             )
 
         # Step 2: Calculate closing cumulative base
@@ -191,7 +199,24 @@ class CumulativeTaxService:
         self._session.add(calc_run)
         self._session.flush()
 
-        # Step 5: Create TaxCumulativeRecord
+        # Step 5: Create TaxCumulativeRecord. The engine returns cumulative
+        # tax at closing base; subtract cumulative tax already recognized in
+        # earlier months to obtain this month's withholding.
+        tax_exemptions = ZERO_MONEY
+        previous_gross_calculated_tax = (
+            previous_record.gross_calculated_tax
+            if previous_record is not None
+            else ZERO_MONEY
+        )
+        withholding_tax = self.calculate_monthly_withholding(
+            gross_calculated_tax=tax_position.calculated_tax,
+            previous_gross_calculated_tax=previous_gross_calculated_tax,
+            tax_exemptions=tax_exemptions,
+        )
+        effective_tax_rate = self.calculate_effective_tax_rate(
+            withholding_tax, monthly_taxable_base
+        )
+
         cumulative_record = TaxCumulativeRecord(
             id=uuid.uuid4(),
             calculation_run_id=calc_run.id,
@@ -203,12 +228,59 @@ class CumulativeTaxService:
             monthly_taxable_base=monthly_taxable_base,
             closing_cumulative_base=closing_cumulative_base,
             gross_calculated_tax=tax_position.calculated_tax,
-            tax_exemptions=Decimal("0.00"),  # No exemptions yet
-            withholding_tax=tax_position.calculated_tax,  # For now: gross = withholding
-            effective_tax_rate=tax_position.effective_tax_rate,
+            tax_exemptions=tax_exemptions,  # No exemptions yet
+            withholding_tax=withholding_tax,
+            effective_tax_rate=effective_tax_rate,
         )
 
         return cumulative_record
+
+    @staticmethod
+    def calculate_monthly_withholding(
+        gross_calculated_tax: Decimal,
+        previous_gross_calculated_tax: Decimal,
+        tax_exemptions: Decimal = ZERO_MONEY,
+    ) -> Decimal:
+        """Return this month's withholding from cumulative tax liabilities."""
+        withholding = quantize_money(
+            gross_calculated_tax
+            - previous_gross_calculated_tax
+            - tax_exemptions
+        )
+        if withholding < ZERO_MONEY:
+            raise ValueError("monthly withholding tax must be >= 0")
+        return withholding
+
+    @staticmethod
+    def calculate_effective_tax_rate(
+        withholding_tax: Decimal,
+        monthly_taxable_base: Decimal,
+    ) -> Decimal:
+        """Return the monthly withholding rate using Decimal-only arithmetic."""
+        if monthly_taxable_base <= ZERO_MONEY:
+            return Decimal("0.000000")
+        rate = quantize_rate(withholding_tax / monthly_taxable_base)
+        assert rate is not None
+        return rate
+
+    def _get_latest_record_before_month(
+        self,
+        employee_id: uuid.UUID,
+        tax_year: int,
+        period_month: int,
+    ) -> TaxCumulativeRecord | None:
+        """Return the latest earlier ledger entry within the same tax year."""
+        stmt = (
+            select(TaxCumulativeRecord)
+            .where(
+                TaxCumulativeRecord.employee_id == employee_id,
+                TaxCumulativeRecord.tax_year == tax_year,
+                TaxCumulativeRecord.period_month < period_month,
+            )
+            .order_by(TaxCumulativeRecord.period_month.desc())
+            .limit(1)
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
 
     def create_cumulative_records_for_payroll(
         self,

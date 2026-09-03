@@ -45,6 +45,33 @@ BRACKET_1_RATE = Decimal("0.15")
 BRACKET_2_RATE = Decimal("0.20")
 BRACKET_3_RATE = Decimal("0.27")
 
+# Independent test oracles derived from the seeded bracket schedule:
+# January: 100,000 * 15% = 15,000.
+# February: cumulative tax at 210,000 is 32,500; subtract January's 15,000.
+EXPECTED_INCOME_TAX = {
+    1: Decimal("15000.00"),
+    2: Decimal("17500.00"),
+}
+
+
+def expected_deductions(period: dict) -> Decimal:
+    """Return fixed deductions plus deterministic monthly income tax."""
+    return sum(
+        (row[3] for row in period["deductions"]), Decimal("0.00")
+    ) + EXPECTED_INCOME_TAX[period["month"]]
+
+
+def expected_net(period: dict) -> Decimal:
+    """Return gross less all expected deductions."""
+    return period["gross"] - expected_deductions(period)
+
+
+def expected_deduction_lines(period: dict) -> dict[str, Decimal]:
+    """Return the complete deduction breakdown, including derived tax."""
+    lines = {code: amount for code, _, _, amount, _ in period["deductions"]}
+    lines["INCOME_TAX"] = EXPECTED_INCOME_TAX[period["month"]]
+    return lines
+
 
 def money(value) -> Decimal:
     """Parse a money field from a response body into a Decimal."""
@@ -140,7 +167,7 @@ class TestPayrollListAPI:
             assert entry["revision_no"] == 1
             assert entry["is_current"] is True
             assert money(entry["gross_earnings"]) == period["gross"]
-            assert money(entry["net_pay"]) == period["net_pay"]
+            assert money(entry["net_pay"]) == expected_net(period)
 
     async def test_unknown_employee_returns_404(
         self, seeded_api_client: AsyncClient
@@ -188,7 +215,7 @@ class TestPayrollDetailAPI:
         assert revision["currency"] == "TRY"
 
         assert money(body["gross"]) == JANUARY["gross"]
-        assert money(body["net"]) == JANUARY["net_pay"]
+        assert money(body["net"]) == expected_net(JANUARY)
 
     async def test_detail_earnings_breakdown_matches_seed(
         self, seeded_api_client: AsyncClient, demo_employee_id: UUID
@@ -216,13 +243,11 @@ class TestPayrollDetailAPI:
         deductions = response.json()["deductions"]
 
         by_code = {item["code"]: money(item["amount"]) for item in deductions["items"]}
-        expected = {
-            code: amount for code, _, _, amount, _ in JANUARY["deductions"]
-        }
+        expected = expected_deduction_lines(JANUARY)
 
         assert by_code == expected
-        assert sum(by_code.values()) == JANUARY["total_deductions"]
-        assert money(deductions["total"]) == JANUARY["total_deductions"]
+        assert sum(by_code.values()) == expected_deductions(JANUARY)
+        assert money(deductions["total"]) == expected_deductions(JANUARY)
 
     async def test_detail_reports_missing_days_and_absences(
         self, seeded_api_client: AsyncClient, demo_employee_id: UUID
@@ -306,13 +331,13 @@ class TestPayrollComparisonAPI:
         assert response.status_code == 200
         net = response.json()["net"]
 
-        expected_delta = FEBRUARY["net_pay"] - JANUARY["net_pay"]
+        expected_delta = expected_net(FEBRUARY) - expected_net(JANUARY)
         expected_percent = (
-            expected_delta / JANUARY["net_pay"] * Decimal("100")
+            expected_delta / expected_net(JANUARY) * Decimal("100")
         ).quantize(Decimal("0.01"))
 
-        assert money(net["previous"]) == JANUARY["net_pay"]
-        assert money(net["current"]) == FEBRUARY["net_pay"]
+        assert money(net["previous"]) == expected_net(JANUARY)
+        assert money(net["current"]) == expected_net(FEBRUARY)
         assert money(net["delta"]) == expected_delta
         assert money(net["delta_percent"]) == expected_percent
 
@@ -331,11 +356,11 @@ class TestPayrollComparisonAPI:
         assert money(earnings["delta"]) == FEBRUARY["gross"] - JANUARY["gross"]
 
         deductions = body["deductions"]
-        assert money(deductions["previous"]) == JANUARY["total_deductions"]
-        assert money(deductions["current"]) == FEBRUARY["total_deductions"]
+        assert money(deductions["previous"]) == expected_deductions(JANUARY)
+        assert money(deductions["current"]) == expected_deductions(FEBRUARY)
         assert (
             money(deductions["delta"])
-            == FEBRUARY["total_deductions"] - JANUARY["total_deductions"]
+            == expected_deductions(FEBRUARY) - expected_deductions(JANUARY)
         )
 
     async def test_missing_days_delta(
@@ -403,8 +428,8 @@ class TestPayrollComparisonAPI:
         )
         by_code = response.json()["deductions"]["by_code"]
 
-        jan = {code: amount for code, _, _, amount, _ in JANUARY["deductions"]}
-        feb = {code: amount for code, _, _, amount, _ in FEBRUARY["deductions"]}
+        jan = expected_deduction_lines(JANUARY)
+        feb = expected_deduction_lines(FEBRUARY)
 
         assert set(by_code) == set(jan) | set(feb)
 
@@ -413,7 +438,7 @@ class TestPayrollComparisonAPI:
             assert money(entry["current"]) == feb.get(code, Decimal("0.00"))
 
         assert sum(money(v["delta"]) for v in by_code.values()) == (
-            FEBRUARY["total_deductions"] - JANUARY["total_deductions"]
+            expected_deductions(FEBRUARY) - expected_deductions(JANUARY)
         )
 
     async def test_comparison_makes_no_causal_claims(
@@ -651,7 +676,7 @@ class TestPayrollDashboardAPI:
 
         salary = body["salary"]
         assert money(salary["gross"]) == JANUARY["gross"]
-        assert money(salary["net"]) == JANUARY["net_pay"]
+        assert money(salary["net"]) == expected_net(JANUARY)
         # January has no predecessor, so these are genuinely absent.
         assert salary["previous_net"] is None
         assert salary["net_delta"] is None
@@ -670,10 +695,10 @@ class TestPayrollDashboardAPI:
         salary = response.json()["salary"]
 
         assert money(salary["gross"]) == FEBRUARY["gross"]
-        assert money(salary["net"]) == FEBRUARY["net_pay"]
-        assert money(salary["previous_net"]) == JANUARY["net_pay"]
+        assert money(salary["net"]) == expected_net(FEBRUARY)
+        assert money(salary["previous_net"]) == expected_net(JANUARY)
         assert money(salary["net_delta"]) == (
-            FEBRUARY["net_pay"] - JANUARY["net_pay"]
+            expected_net(FEBRUARY) - expected_net(JANUARY)
         )
 
     async def test_dashboard_reports_net_delta_percent(
@@ -686,8 +711,8 @@ class TestPayrollDashboardAPI:
         salary = response.json()["salary"]
 
         expected = (
-            (FEBRUARY["net_pay"] - JANUARY["net_pay"])
-            / JANUARY["net_pay"]
+            (expected_net(FEBRUARY) - expected_net(JANUARY))
+            / expected_net(JANUARY)
             * Decimal("100")
         ).quantize(Decimal("0.01"))
 
@@ -758,13 +783,12 @@ class TestPayrollDashboardAPI:
             item["code"]: money(item["amount"])
             for item in body["deductions"]["items"]
         }
-        assert deductions == {
-            code: amount for code, _, _, amount, _ in FEBRUARY["deductions"]
-        }
+        assert deductions == expected_deduction_lines(FEBRUARY)
         assert sum(deductions.values()) == money(body["deductions"]["total"])
 
+    @pytest.mark.parametrize("month", [1, 2])
     async def test_dashboard_tax_section_agrees_with_tax_status(
-        self, seeded_api_client: AsyncClient, demo_employee_id: UUID
+        self, seeded_api_client: AsyncClient, demo_employee_id: UUID, month: int
     ) -> None:
         """
         The dashboard's tax figures match the tax-status endpoint exactly.
@@ -774,15 +798,25 @@ class TestPayrollDashboardAPI:
         """
         dashboard = (
             await seeded_api_client.get(
-                f"/api/v1/employees/{demo_employee_id}/dashboard/2026/2"
+                f"/api/v1/employees/{demo_employee_id}/dashboard/2026/{month}"
             )
         ).json()["tax"]
         status = (
             await seeded_api_client.get(
                 f"/api/v1/employees/{demo_employee_id}/tax-status",
-                params={"year": 2026, "month": 2},
+                params={"year": 2026, "month": month},
             )
         ).json()
+        detail = (
+            await seeded_api_client.get(
+                f"/api/v1/employees/{demo_employee_id}/payrolls/2026/{month}"
+            )
+        ).json()
+        detail_income_tax = next(
+            money(item["amount"])
+            for item in detail["deductions"]["items"]
+            if item["code"] == "INCOME_TAX"
+        )
 
         assert money(dashboard["cumulative_tax_base"]) == money(
             status["cumulative_taxable_base"]
@@ -800,6 +834,8 @@ class TestPayrollDashboardAPI:
             status["distance_to_next_bracket"]
         )
         assert dashboard["rule_set_version"] == status["rule_set_version"]
+        assert detail_income_tax == money(dashboard["income_tax"])
+        assert detail_income_tax == EXPECTED_INCOME_TAX[month]
 
     async def test_dashboard_income_tax_matches_payroll_record(
         self, seeded_api_client: AsyncClient, demo_employee_id: UUID
@@ -809,10 +845,13 @@ class TestPayrollDashboardAPI:
             f"/api/v1/employees/{demo_employee_id}/dashboard/2026/2"
         )
 
-        assert money(response.json()["tax"]["income_tax"]) == FEBRUARY["income_tax"]
+        assert money(response.json()["tax"]["income_tax"]) == (
+            EXPECTED_INCOME_TAX[2]
+        )
 
+    @pytest.mark.parametrize("month", [1, 2])
     async def test_dashboard_agrees_with_payroll_detail(
-        self, seeded_api_client: AsyncClient, demo_employee_id: UUID
+        self, seeded_api_client: AsyncClient, demo_employee_id: UUID, month: int
     ) -> None:
         """
         Dashboard and payroll-detail report the same underlying revision.
@@ -822,12 +861,12 @@ class TestPayrollDashboardAPI:
         """
         dashboard = (
             await seeded_api_client.get(
-                f"/api/v1/employees/{demo_employee_id}/dashboard/2026/2"
+                f"/api/v1/employees/{demo_employee_id}/dashboard/2026/{month}"
             )
         ).json()
         detail = (
             await seeded_api_client.get(
-                f"/api/v1/employees/{demo_employee_id}/payrolls/2026/2"
+                f"/api/v1/employees/{demo_employee_id}/payrolls/2026/{month}"
             )
         ).json()
 

@@ -28,7 +28,7 @@ from app.models.payroll_detail import (
     PayrollDeduction,
     PayrollEarning,
 )
-from app.models.tax import TaxCumulativeRecord
+from app.models.tax import TaxCalculationRun, TaxCumulativeRecord
 from app.models.user import User, UserRole
 from app.seeds import demo_payroll_seed
 from app.seeds.demo_payroll_seed import (
@@ -83,7 +83,56 @@ def _counts(session: Session) -> dict[str, int]:
         "cumulative": session.execute(
             select(func.count()).select_from(TaxCumulativeRecord)
         ).scalar_one(),
+        "calculation_runs": session.execute(
+            select(func.count()).select_from(TaxCalculationRun)
+        ).scalar_one(),
     }
+
+
+def _financial_snapshot(session: Session) -> tuple:
+    """Capture IDs and derived values so a second seed run cannot drift them."""
+    versions = session.execute(
+        select(PayrollVersion)
+        .join(Payroll, PayrollVersion.payroll_id == Payroll.id)
+        .join(Employee, Payroll.employee_id == Employee.id)
+        .where(
+            Employee.employee_no == DEMO_EMPLOYEE_NO,
+            Payroll.period_year == DEMO_TAX_YEAR,
+        )
+        .order_by(Payroll.period_month)
+    ).scalars().all()
+    records = session.execute(
+        select(TaxCumulativeRecord)
+        .where(TaxCumulativeRecord.tax_year == DEMO_TAX_YEAR)
+        .order_by(TaxCumulativeRecord.period_month)
+    ).scalars().all()
+    return (
+        tuple(
+            (
+                version.id,
+                version.income_tax,
+                version.total_deductions,
+                version.net_pay,
+                tuple(
+                    sorted(
+                        (deduction.code, deduction.amount)
+                        for deduction in version.deductions
+                    )
+                ),
+            )
+            for version in versions
+        ),
+        tuple(
+            (
+                record.id,
+                record.calculation_run_id,
+                record.gross_calculated_tax,
+                record.withholding_tax,
+                record.effective_tax_rate,
+            )
+            for record in records
+        ),
+    )
 
 
 class TestDemoSeedRuns:
@@ -177,12 +226,14 @@ class TestDemoSeedIdempotency:
     """Running the seed twice must not duplicate anything."""
 
     def test_second_run_creates_nothing(self, seeded: Session) -> None:
-        """Row counts are identical before and after a second run."""
+        """A second run creates no rows and causes no financial drift."""
         before = _counts(seeded)
+        financial_before = _financial_snapshot(seeded)
 
         seed_demo_payroll(seeded)
 
         assert _counts(seeded) == before
+        assert _financial_snapshot(seeded) == financial_before
 
     def test_second_run_returns_the_same_rows(self, seeded: Session) -> None:
         """The second run returns the same org, employee and versions."""
@@ -200,6 +251,39 @@ class TestDemoSeedIdempotency:
         assert result["rule_set"] == 0
         assert result["brackets"] == 0
         assert result["parameters"] == 0
+
+    def test_rerun_repairs_legacy_illustrative_tax_without_duplicates(
+        self, seeded: Session
+    ) -> None:
+        """Old 5,000/5,500 demo tax values converge to the existing ledger."""
+        before = _counts(seeded)
+        legacy_values = {
+            1: (Decimal("5000.00"), Decimal("15600.00"), Decimal("84400.00")),
+            2: (Decimal("5500.00"), Decimal("17160.00"), Decimal("92840.00")),
+        }
+        for month, (income_tax, deductions, net_pay) in legacy_values.items():
+            version = TestDemoSeedDataIntegrity._version_for(seeded, month)
+            version.income_tax = income_tax
+            version.total_deductions = deductions
+            version.net_pay = net_pay
+            next(
+                row for row in version.deductions if row.code == "INCOME_TAX"
+            ).amount = income_tax
+
+        records = seeded.execute(select(TaxCumulativeRecord)).scalars().all()
+        for record in records:
+            record.withholding_tax = record.gross_calculated_tax
+        seeded.flush()
+
+        seed_demo_payroll(seeded)
+
+        assert _counts(seeded) == before
+        TestDemoSeedDataIntegrity._assert_monthly_withholding(
+            seeded, 1, Decimal("15000.00")
+        )
+        TestDemoSeedDataIntegrity._assert_monthly_withholding(
+            seeded, 2, Decimal("17500.00")
+        )
 
 
 class TestDemoSeedDataIntegrity:
@@ -220,8 +304,19 @@ class TestDemoSeedDataIntegrity:
             version = self._version_for(seeded, period["month"])
             total = sum(d.amount for d in version.deductions)
 
-            assert total == period["total_deductions"]
             assert total == version.total_deductions
+
+    def test_january_income_tax_equals_deterministic_withholding(
+        self, seeded: Session
+    ) -> None:
+        """January payroll and deduction use the ledger's 15% withholding."""
+        self._assert_monthly_withholding(seeded, 1, Decimal("15000.00"))
+
+    def test_february_income_tax_equals_deterministic_withholding(
+        self, seeded: Session
+    ) -> None:
+        """February uses cumulative liability less tax recognized in January."""
+        self._assert_monthly_withholding(seeded, 2, Decimal("17500.00"))
 
     def test_net_equals_gross_minus_deductions(self, seeded: Session) -> None:
         """Net pay reconciles with gross and total deductions."""
@@ -296,6 +391,51 @@ class TestDemoSeedDataIntegrity:
             ).scalar_one()
 
             assert record.monthly_taxable_base == period["income_tax_base"]
+
+    @classmethod
+    def _assert_monthly_withholding(
+        cls,
+        session: Session,
+        month: int,
+        expected: Decimal,
+    ) -> None:
+        """Assert ledger delta, payroll column and detail line are identical."""
+        version = cls._version_for(session, month)
+        record = session.execute(
+            select(TaxCumulativeRecord).where(
+                TaxCumulativeRecord.payroll_version_id == version.id
+            )
+        ).scalar_one()
+        previous = session.execute(
+            select(TaxCumulativeRecord)
+            .where(
+                TaxCumulativeRecord.employee_id == record.employee_id,
+                TaxCumulativeRecord.tax_year == record.tax_year,
+                TaxCumulativeRecord.period_month < month,
+            )
+            .order_by(TaxCumulativeRecord.period_month.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        previous_gross_tax = (
+            previous.gross_calculated_tax
+            if previous is not None
+            else Decimal("0.00")
+        )
+        deterministic_withholding = (
+            record.gross_calculated_tax
+            - previous_gross_tax
+            - record.tax_exemptions
+        )
+        income_tax_line = next(
+            deduction
+            for deduction in version.deductions
+            if deduction.code == "INCOME_TAX"
+        )
+
+        assert deterministic_withholding == expected
+        assert record.withholding_tax == expected
+        assert version.income_tax == expected
+        assert income_tax_line.amount == expected
 
     @staticmethod
     def _version_for(session: Session, month: int) -> PayrollVersion:

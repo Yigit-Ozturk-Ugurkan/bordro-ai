@@ -136,6 +136,9 @@ class TestCumulativeTaxServiceMonthlyLedger:
 
         assert record.opening_cumulative_base == Decimal("0.00")
         assert record.closing_cumulative_base == Decimal("100000.00")
+        assert record.gross_calculated_tax == Decimal("15000.00")
+        assert record.withholding_tax == Decimal("15000.00")
+        assert record.effective_tax_rate == Decimal("0.150000")
 
     def test_february_opening_equals_january_closing(
         self,
@@ -178,6 +181,9 @@ class TestCumulativeTaxServiceMonthlyLedger:
         )
 
         assert record_feb.opening_cumulative_base == record_jan.closing_cumulative_base
+        assert record_feb.gross_calculated_tax == Decimal("30500.00")
+        assert record_feb.withholding_tax == Decimal("15500.00")
+        assert record_feb.effective_tax_rate == Decimal("0.155000")
 
 
 class TestCumulativeTaxServiceYearBoundary:

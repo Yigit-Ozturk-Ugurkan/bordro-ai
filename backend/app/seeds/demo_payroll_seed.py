@@ -16,16 +16,9 @@ What it builds:
 
 Idempotency:
     Every entity is created through a get-or-create keyed on its natural
-    key, so running the seed twice creates nothing the second time and
-    returns the same rows. This is asserted by
-    tests/integration/test_demo_seed.py.
-
-Note on demo withholding figures:
-    ``PayrollVersion.income_tax`` here is a simplified round number chosen
-    for readable demo output. It is NOT the engine-derived monthly
-    withholding implied by the cumulative ledger. The ledger records
-    (built through TaxEngine) are the authoritative progressive position;
-    the payroll withholding column is illustrative demo input.
+    key. Derived tax, deduction-total and net-pay values are reconciled to
+    the deterministic cumulative ledger, so rerunning this seed also repairs
+    demo rows created by an older seed without creating duplicates or drift.
 """
 
 import uuid
@@ -51,10 +44,11 @@ from app.models.payroll_detail import (
     PayrollDeduction,
     PayrollEarning,
 )
-from app.models.tax import TaxCalculationRun, TaxCumulativeRecord, TaxRuleSet
+from app.models.tax import TaxCumulativeRecord, TaxRuleSet
 from app.models.user import User, UserRole
 from app.core.config import get_settings
 from app.services.auth.authentication import AuthenticationService
+from app.services.taxation.cumulative_tax_service import CumulativeTaxService
 from app.services.taxation.tax_engine import TaxEngine
 from app.services.taxation.tax_service import TaxService
 
@@ -68,13 +62,19 @@ DEMO_USER_EMAILS = {
     UserRoleType.PAYROLL_ADMIN: "payroll@demo.local",
     UserRoleType.AUDITOR: "auditor@demo.local",
 }
+DEMO_INCOME_TAX_DEDUCTION = (
+    "INCOME_TAX",
+    "Gelir Vergisi",
+    "TAX",
+    True,
+)
 
 # --------------------------------------------------------------------------
 # Period definitions
 #
-# Each month's earning lines sum to gross_earnings and each month's
-# deduction lines sum to total_deductions; test_demo_seed.py asserts this,
-# so the demo data cannot silently drift out of balance.
+# Each month's fixed deduction inputs intentionally exclude income tax.
+# Income tax is calculated from the cumulative ledger after the payroll
+# version exists, and dependent totals are reconciled from stored rows.
 # --------------------------------------------------------------------------
 
 DEMO_PERIODS = [
@@ -84,10 +84,7 @@ DEMO_PERIODS = [
         "income_tax_base": Decimal("100000.00"),
         "employee_sgk": Decimal("10000.00"),
         "employee_unemployment": Decimal("500.00"),
-        "income_tax": Decimal("5000.00"),
         "stamp_tax": Decimal("100.00"),
-        "total_deductions": Decimal("15600.00"),
-        "net_pay": Decimal("84400.00"),
         "paid_days": Decimal("22.00"),
         "missing_days": Decimal("0.00"),
         "earnings": [
@@ -98,7 +95,6 @@ DEMO_PERIODS = [
         "deductions": [
             ("SGK_EMPLOYEE", "SGK İşçi Payı", "STATUTORY", Decimal("10000.00"), True),
             ("UNEMPLOYMENT", "İşsizlik Sigortası", "STATUTORY", Decimal("500.00"), True),
-            ("INCOME_TAX", "Gelir Vergisi", "TAX", Decimal("5000.00"), True),
             ("STAMP_TAX", "Damga Vergisi", "TAX", Decimal("100.00"), True),
         ],
         "absences": [],
@@ -109,10 +105,7 @@ DEMO_PERIODS = [
         "income_tax_base": Decimal("110000.00"),
         "employee_sgk": Decimal("11000.00"),
         "employee_unemployment": Decimal("550.00"),
-        "income_tax": Decimal("5500.00"),
         "stamp_tax": Decimal("110.00"),
-        "total_deductions": Decimal("17160.00"),
-        "net_pay": Decimal("92840.00"),
         "paid_days": Decimal("20.00"),
         "missing_days": Decimal("2.00"),
         "earnings": [
@@ -128,7 +121,6 @@ DEMO_PERIODS = [
         "deductions": [
             ("SGK_EMPLOYEE", "SGK İşçi Payı", "STATUTORY", Decimal("11000.00"), True),
             ("UNEMPLOYMENT", "İşsizlik Sigortası", "STATUTORY", Decimal("550.00"), True),
-            ("INCOME_TAX", "Gelir Vergisi", "TAX", Decimal("5500.00"), True),
             ("STAMP_TAX", "Damga Vergisi", "TAX", Decimal("110.00"), True),
         ],
         "absences": [
@@ -321,6 +313,9 @@ def _get_or_create_period(
     ).scalar_one_or_none()
 
     if version is None:
+        fixed_deductions = sum(
+            (row[3] for row in period["deductions"]), Decimal("0.00")
+        )
         version = PayrollVersion(
             id=uuid.uuid4(),
             payroll_id=payroll.id,
@@ -339,11 +334,11 @@ def _get_or_create_period(
             stamp_tax_base=period["gross"],
             employee_sgk=period["employee_sgk"],
             employee_unemployment=period["employee_unemployment"],
-            income_tax=period["income_tax"],
+            income_tax=Decimal("0.00"),
             stamp_tax=period["stamp_tax"],
             total_earnings=period["gross"],
-            total_deductions=period["total_deductions"],
-            net_pay=period["net_pay"],
+            total_deductions=fixed_deductions,
+            net_pay=period["gross"] - fixed_deductions,
             paid_days=period["paid_days"],
             missing_days=period["missing_days"],
             # Flagged current so the repository resolves this revision as
@@ -356,7 +351,10 @@ def _get_or_create_period(
     _ensure_earnings(db, version, period["earnings"])
     _ensure_deductions(db, version, period["deductions"])
     _ensure_absences(db, version, period["absences"])
-    _ensure_cumulative_record(db, org, employee, version, period, rule_set)
+    cumulative_record = _ensure_cumulative_record(
+        db, org, employee, version, period, rule_set
+    )
+    _reconcile_payroll_with_tax(db, version, cumulative_record)
 
     return version
 
@@ -455,83 +453,107 @@ def _ensure_cumulative_record(
     version: PayrollVersion,
     period: dict,
     rule_set: TaxRuleSet,
-) -> None:
+) -> TaxCumulativeRecord:
     """
     Create the month's tax ledger entry if it is not already present.
 
-    The tax figures are produced by TaxEngine from the seeded brackets, so
-    the demo's progressive position is genuinely derived rather than
-    transcribed. Existing records are never modified: the ledger is
-    append-only.
+    Tax figures are produced through CumulativeTaxService and TaxEngine from
+    the seeded brackets. Existing legacy demo records have only their derived
+    monthly withholding/rate reconciled; their calculation run and cumulative
+    bases remain unchanged.
     """
     month = period["month"]
 
-    already = db.execute(
-        select(TaxCumulativeRecord.id).where(
+    existing = db.execute(
+        select(TaxCumulativeRecord).where(
             TaxCumulativeRecord.employee_id == employee.id,
             TaxCumulativeRecord.tax_year == DEMO_TAX_YEAR,
             TaxCumulativeRecord.period_month == month,
         )
     ).scalar_one_or_none()
-    if already is not None:
-        return
-
-    monthly_base = period["income_tax_base"]
-
-    opening = Decimal("0.00")
-    if month > 1:
-        previous = db.execute(
-            select(TaxCumulativeRecord)
-            .where(
-                TaxCumulativeRecord.employee_id == employee.id,
-                TaxCumulativeRecord.tax_year == DEMO_TAX_YEAR,
-                TaxCumulativeRecord.period_month == month - 1,
-            )
-            .order_by(TaxCumulativeRecord.period_month.desc())
-            .limit(1)
-        ).scalars().first()
-        if previous is not None:
-            opening = previous.closing_cumulative_base
-
-    closing = opening + monthly_base
-
     engine = TaxEngine(db, TaxService(db))
-    position = engine.calculate_progressive_tax(
-        closing_cumulative_base=closing,
-        monthly_taxable_base=monthly_base,
-        rule_set=rule_set,
-    )
+    cumulative_service = CumulativeTaxService(db, engine)
 
-    run = TaxCalculationRun(
-        id=uuid.uuid4(),
-        organization_id=org.id,
-        employee_id=employee.id,
-        tax_year=DEMO_TAX_YEAR,
-        rule_set_id=rule_set.id,
-        trigger_type="MONTHLY_PAYROLL",
-        status="COMPLETED",
-        calculation_version="1.0",
-    )
-    db.add(run)
-    db.flush()
-
-    db.add(
-        TaxCumulativeRecord(
-            id=uuid.uuid4(),
-            calculation_run_id=run.id,
+    if existing is None:
+        existing = cumulative_service.build_monthly_cumulative_record(
             employee_id=employee.id,
             payroll_version_id=version.id,
+            organization_id=org.id,
             tax_year=DEMO_TAX_YEAR,
             period_month=month,
-            opening_cumulative_base=opening,
-            monthly_taxable_base=monthly_base,
-            closing_cumulative_base=closing,
-            gross_calculated_tax=position.calculated_tax,
-            tax_exemptions=Decimal("0.00"),
-            withholding_tax=position.calculated_tax,
-            effective_tax_rate=position.effective_tax_rate,
+            monthly_taxable_base=period["income_tax_base"],
+            rule_set=rule_set,
         )
+        db.add(existing)
+        db.flush()
+        return existing
+
+    previous = db.execute(
+        select(TaxCumulativeRecord)
+        .where(
+            TaxCumulativeRecord.employee_id == employee.id,
+            TaxCumulativeRecord.tax_year == DEMO_TAX_YEAR,
+            TaxCumulativeRecord.period_month < month,
+        )
+        .order_by(TaxCumulativeRecord.period_month.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    previous_gross_tax = (
+        previous.gross_calculated_tax if previous is not None else Decimal("0.00")
     )
+    expected_withholding = cumulative_service.calculate_monthly_withholding(
+        existing.gross_calculated_tax,
+        previous_gross_tax,
+        existing.tax_exemptions,
+    )
+    existing.withholding_tax = expected_withholding
+    existing.effective_tax_rate = cumulative_service.calculate_effective_tax_rate(
+        expected_withholding, existing.monthly_taxable_base
+    )
+    db.flush()
+    return existing
+
+
+def _reconcile_payroll_with_tax(
+    db: Session,
+    version: PayrollVersion,
+    cumulative_record: TaxCumulativeRecord,
+) -> None:
+    """Make payroll tax and dependent totals agree with the tax ledger."""
+    code, label, category, is_statutory = DEMO_INCOME_TAX_DEDUCTION
+    deduction = db.execute(
+        select(PayrollDeduction).where(
+            PayrollDeduction.payroll_version_id == version.id,
+            PayrollDeduction.code == code,
+        )
+    ).scalar_one_or_none()
+    if deduction is None:
+        deduction = PayrollDeduction(
+            id=uuid.uuid4(),
+            payroll_version_id=version.id,
+            code=code,
+            label=label,
+            category=category,
+            amount=cumulative_record.withholding_tax,
+            is_statutory=is_statutory,
+            is_sensitive=False,
+        )
+        db.add(deduction)
+    else:
+        deduction.amount = cumulative_record.withholding_tax
+
+    db.flush()
+    total_deductions = sum(
+        db.execute(
+            select(PayrollDeduction.amount).where(
+                PayrollDeduction.payroll_version_id == version.id
+            )
+        ).scalars(),
+        Decimal("0.00"),
+    )
+    version.income_tax = cumulative_record.withholding_tax
+    version.total_deductions = total_deductions
+    version.net_pay = version.gross_earnings - total_deductions
     db.flush()
 
 
