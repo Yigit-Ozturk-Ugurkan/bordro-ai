@@ -26,6 +26,13 @@ class NotFoundError(BordroError):
     default_message = "Resource not found"
 
 
+class AuthorizationDeniedError(BordroError):
+    """An authenticated principal lacks permission for the resource."""
+
+    status_code = 403
+    default_message = "Not authorized to access this employee"
+
+
 class EmployeeNotFoundError(NotFoundError):
     """The employee does not exist."""
 

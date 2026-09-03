@@ -8,3 +8,5 @@ pydantic-settings
 pytest
 pytest-asyncio
 httpx
+PyJWT
+pwdlib[argon2]

@@ -265,7 +265,22 @@ async def seeded_api_client(
     api_client: "AsyncClient",
     seeded_async_session: "AsyncSession",
 ) -> AsyncGenerator["AsyncClient", None]:
-    """An API client whose shared transaction already holds the demo data."""
+    """An employee-authenticated client over the seeded test transaction."""
+    from app.seeds.demo_payroll_seed import DEMO_USER_EMAILS
+    from app.models.enums import UserRoleType
+
+    assert settings.demo_auth_password is not None
+    response = await api_client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": DEMO_USER_EMAILS[UserRoleType.EMPLOYEE],
+            "password": settings.demo_auth_password.get_secret_value(),
+        },
+    )
+    assert response.status_code == 200, response.text
+    api_client.headers["Authorization"] = (
+        f"Bearer {response.json()['access_token']}"
+    )
     yield api_client
 
 

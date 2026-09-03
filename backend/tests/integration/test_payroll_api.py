@@ -136,10 +136,12 @@ class TestPayrollListAPI:
         assert "not found" in response.json()["detail"].lower()
 
     async def test_malformed_employee_id_returns_422(
-        self, api_client: AsyncClient
+        self, seeded_api_client: AsyncClient
     ) -> None:
         """A non-UUID employee id fails path validation."""
-        response = await api_client.get("/api/v1/employees/not-a-uuid/payrolls")
+        response = await seeded_api_client.get(
+            "/api/v1/employees/not-a-uuid/payrolls"
+        )
 
         assert response.status_code == 422
 
@@ -262,10 +264,10 @@ class TestPayrollDetailAPI:
         assert response.status_code == 404
 
     async def test_out_of_range_month_returns_422(
-        self, api_client: AsyncClient, demo_employee_id: UUID
+        self, seeded_api_client: AsyncClient, demo_employee_id: UUID
     ) -> None:
         """Month 13 is rejected by path validation."""
-        response = await api_client.get(
+        response = await seeded_api_client.get(
             f"/api/v1/employees/{demo_employee_id}/payrolls/2026/13"
         )
 
@@ -869,10 +871,10 @@ class TestPayrollDashboardAPI:
 
     @pytest.mark.parametrize("month", [0, 13, 99])
     async def test_invalid_month_returns_422(
-        self, api_client: AsyncClient, demo_employee_id: UUID, month: int
+        self, seeded_api_client: AsyncClient, demo_employee_id: UUID, month: int
     ) -> None:
         """Out-of-range months are rejected by path validation."""
-        response = await api_client.get(
+        response = await seeded_api_client.get(
             f"/api/v1/employees/{demo_employee_id}/dashboard/2026/{month}"
         )
 

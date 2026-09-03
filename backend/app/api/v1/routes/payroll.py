@@ -28,6 +28,10 @@ from app.api.v1.dependencies import (
     build_payroll_read_service,
     build_tax_status_service,
 )
+from app.api.v1.auth_dependencies import (
+    get_current_employee,
+    require_payroll_read_access,
+)
 from app.core.exceptions import ComparisonNotAvailableError, PayrollNotFoundError
 from app.db.session import get_db
 from app.repositories.payroll_repository import PayrollReadRepository
@@ -49,7 +53,7 @@ router = APIRouter(prefix="/api/v1", tags=["payroll"])
     description="List every payroll period recorded for an employee, newest first.",
 )
 async def list_payrolls(
-    employee_id: UUID = Path(..., description="Employee UUID"),
+    employee_id: UUID = Depends(require_payroll_read_access),
     session: AsyncSession = Depends(get_db),
 ) -> PayrollPeriodListSchema:
     """List an employee's payroll periods."""
@@ -69,7 +73,7 @@ async def list_payrolls(
     description="Full detail of the current revision for one payroll period.",
 )
 async def get_payroll_detail(
-    employee_id: UUID = Path(..., description="Employee UUID"),
+    employee_id: UUID = Depends(require_payroll_read_access),
     year: int = Path(..., ge=2000, le=2999, description="Period year"),
     month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
     session: AsyncSession = Depends(get_db),
@@ -94,7 +98,7 @@ async def get_payroll_detail(
     ),
 )
 async def get_payroll_comparison(
-    employee_id: UUID = Path(..., description="Employee UUID"),
+    employee_id: UUID = Depends(require_payroll_read_access),
     year: int = Path(..., ge=2000, le=2999, description="Period year"),
     month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
     session: AsyncSession = Depends(get_db),
@@ -140,7 +144,7 @@ async def get_payroll_comparison(
     ),
 )
 async def get_tax_status(
-    employee_id: UUID = Path(..., description="Employee UUID"),
+    employee_id: UUID = Depends(require_payroll_read_access),
     year: Optional[int] = Query(
         None, ge=2000, le=2999, description="Tax year (defaults to the current year)"
     ),
@@ -172,7 +176,7 @@ async def get_tax_status(
     description="Complete payroll dashboard for an employee in a given month.",
 )
 async def get_payroll_dashboard(
-    employee_id: UUID = Path(..., description="Employee UUID"),
+    employee_id: UUID = Depends(require_payroll_read_access),
     year: int = Path(..., ge=2000, le=2999, description="Tax year"),
     month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
     session: AsyncSession = Depends(get_db),
@@ -187,3 +191,84 @@ async def get_payroll_dashboard(
         )
 
     return PayrollDashboardReadSchema(**await session.run_sync(work))
+
+
+# Employee self-service routes deliberately derive the employee id from the
+# authenticated user. They delegate to the same handlers/services as the
+# authorized employee-id routes, so no financial logic is duplicated.
+
+
+@router.get(
+    "/me/payrolls",
+    response_model=PayrollPeriodListSchema,
+    summary="List my payroll periods",
+)
+async def list_my_payrolls(
+    employee_id: UUID = Depends(get_current_employee),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollPeriodListSchema:
+    return await list_payrolls(employee_id=employee_id, session=session)
+
+
+@router.get(
+    "/me/payrolls/{year}/{month}",
+    response_model=PayrollDetailSchema,
+    summary="Get my payroll detail",
+)
+async def get_my_payroll_detail(
+    year: int = Path(..., ge=2000, le=2999, description="Period year"),
+    month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
+    employee_id: UUID = Depends(get_current_employee),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailSchema:
+    return await get_payroll_detail(
+        employee_id=employee_id, year=year, month=month, session=session
+    )
+
+
+@router.get(
+    "/me/payrolls/{year}/{month}/comparison",
+    response_model=PayrollComparisonReadSchema,
+    summary="Get my payroll comparison",
+)
+async def get_my_payroll_comparison(
+    year: int = Path(..., ge=2000, le=2999, description="Period year"),
+    month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
+    employee_id: UUID = Depends(get_current_employee),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollComparisonReadSchema:
+    return await get_payroll_comparison(
+        employee_id=employee_id, year=year, month=month, session=session
+    )
+
+
+@router.get(
+    "/me/tax-status",
+    response_model=TaxStatusSchema,
+    summary="Get my tax status",
+)
+async def get_my_tax_status(
+    year: Optional[int] = Query(None, ge=2000, le=2999),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    employee_id: UUID = Depends(get_current_employee),
+    session: AsyncSession = Depends(get_db),
+) -> TaxStatusSchema:
+    return await get_tax_status(
+        employee_id=employee_id, year=year, month=month, session=session
+    )
+
+
+@router.get(
+    "/me/dashboard/{year}/{month}",
+    response_model=PayrollDashboardReadSchema,
+    summary="Get my payroll dashboard",
+)
+async def get_my_payroll_dashboard(
+    year: int = Path(..., ge=2000, le=2999, description="Tax year"),
+    month: int = Path(..., ge=1, le=12, description="Month (1-12)"),
+    employee_id: UUID = Depends(get_current_employee),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDashboardReadSchema:
+    return await get_payroll_dashboard(
+        employee_id=employee_id, year=year, month=month, session=session
+    )

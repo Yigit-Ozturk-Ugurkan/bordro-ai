@@ -19,7 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
-from app.models.enums import PayrollVersionStatus
+from app.core.config import get_settings
+from app.models.enums import PayrollVersionStatus, UserRoleType
 from app.models.organization import Organization
 from app.models.payroll import Payroll, PayrollVersion
 from app.models.payroll_detail import (
@@ -28,12 +29,14 @@ from app.models.payroll_detail import (
     PayrollEarning,
 )
 from app.models.tax import TaxCumulativeRecord
+from app.models.user import User, UserRole
 from app.seeds import demo_payroll_seed
 from app.seeds.demo_payroll_seed import (
     DEMO_EMPLOYEE_NO,
     DEMO_ORG_CODE,
     DEMO_PERIODS,
     DEMO_TAX_YEAR,
+    DEMO_USER_EMAILS,
     seed_demo_payroll,
 )
 from app.seeds.tax_2026_seed import seed_tax_2026
@@ -55,6 +58,12 @@ def _counts(session: Session) -> dict[str, int]:
         ).scalar_one(),
         "employees": session.execute(
             select(func.count()).select_from(Employee)
+        ).scalar_one(),
+        "users": session.execute(
+            select(func.count()).select_from(User)
+        ).scalar_one(),
+        "user_roles": session.execute(
+            select(func.count()).select_from(UserRole)
         ).scalar_one(),
         "payrolls": session.execute(
             select(func.count()).select_from(Payroll)
@@ -97,6 +106,30 @@ class TestDemoSeedRuns:
         assert versions
         for version in versions:
             assert version.status in set(PayrollVersionStatus)
+
+    def test_demo_users_have_hashed_passwords_and_expected_roles(
+        self, seeded: Session
+    ) -> None:
+        users = seeded.execute(select(User)).scalars().all()
+        assert get_settings().demo_auth_password is not None
+        password = get_settings().demo_auth_password.get_secret_value()
+
+        assert {user.email for user in users} == set(DEMO_USER_EMAILS.values())
+        assert all(user.password_hash != password for user in users)
+        assert all(user.password_hash.startswith("$argon2id$") for user in users)
+        assert {
+            role.role for user in users for role in user.roles
+        } == set(UserRoleType) - {UserRoleType.SYSTEM_ADMIN}
+
+        employee_user = next(
+            user
+            for user in users
+            if user.email == DEMO_USER_EMAILS[UserRoleType.EMPLOYEE]
+        )
+        employee = seeded.execute(
+            select(Employee).where(Employee.employee_no == DEMO_EMPLOYEE_NO)
+        ).scalar_one()
+        assert employee.user_id == employee_user.id
 
     def test_versions_are_flagged_current(self, seeded: Session) -> None:
         """Each period has exactly one revision flagged current."""

@@ -6,6 +6,7 @@ real employee, company, or identifying data appears here.
 
 What it builds:
 - Organization DEMO_COMPANY and employee DEMO001
+- Fictitious employee, HR, payroll-admin, and auditor login accounts
 - January 2026 and February 2026 payrolls, each with a current revision
 - Earning and deduction lines for both months, including a code that
   appears in only one month (BONUS) so per-code deltas are exercised
@@ -30,6 +31,7 @@ Note on demo withholding figures:
 import uuid
 from datetime import date
 from decimal import Decimal
+from functools import lru_cache
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,6 +42,7 @@ from app.models.enums import (
     EmployeeStatus,
     PayrollSourceType,
     PayrollVersionStatus,
+    UserRoleType,
 )
 from app.models.organization import Organization
 from app.models.payroll import Payroll, PayrollVersion
@@ -49,6 +52,9 @@ from app.models.payroll_detail import (
     PayrollEarning,
 )
 from app.models.tax import TaxCalculationRun, TaxCumulativeRecord, TaxRuleSet
+from app.models.user import User, UserRole
+from app.core.config import get_settings
+from app.services.auth.authentication import AuthenticationService
 from app.services.taxation.tax_engine import TaxEngine
 from app.services.taxation.tax_service import TaxService
 
@@ -56,6 +62,12 @@ DEMO_ORG_CODE = "DEMO_COMPANY"
 DEMO_EMPLOYEE_NO = "DEMO001"
 DEMO_RULE_SET_VERSION = "TR_PAYROLL_2026_V1"
 DEMO_TAX_YEAR = 2026
+DEMO_USER_EMAILS = {
+    UserRoleType.EMPLOYEE: "employee@demo.local",
+    UserRoleType.HR_ADMIN: "hr@demo.local",
+    UserRoleType.PAYROLL_ADMIN: "payroll@demo.local",
+    UserRoleType.AUDITOR: "auditor@demo.local",
+}
 
 # --------------------------------------------------------------------------
 # Period definitions
@@ -157,6 +169,7 @@ def seed_demo_payroll(
 
     org = _get_or_create_organization(db)
     employee = _get_or_create_employee(db, org)
+    _ensure_demo_users(db, org, employee)
 
     versions: list[PayrollVersion] = []
     for period in DEMO_PERIODS:
@@ -215,6 +228,60 @@ def _get_or_create_employee(db: Session, org: Organization) -> Employee:
     db.add(employee)
     db.flush()
     return employee
+
+
+@lru_cache(maxsize=4)
+def _demo_password_hashes(password: str) -> dict[UserRoleType, str]:
+    """Hash once per process while retaining distinct Argon2 salts per account."""
+    return {
+        role: AuthenticationService.hash_password(password)
+        for role in DEMO_USER_EMAILS
+    }
+
+
+def _ensure_demo_users(
+    db: Session, org: Organization, employee: Employee
+) -> None:
+    """Create idempotent fictitious role accounts and link the employee user."""
+    configured_password = get_settings().demo_auth_password
+    if configured_password is None:
+        raise RuntimeError("DEMO_AUTH_PASSWORD is required to run the demo seed")
+    password = configured_password.get_secret_value()
+    password_hashes = _demo_password_hashes(password)
+
+    for role, email in DEMO_USER_EMAILS.items():
+        user = db.execute(
+            select(User).where(
+                User.organization_id == org.id,
+                User.email == email,
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            user = User(
+                id=uuid.uuid4(),
+                organization_id=org.id,
+                email=email,
+                password_hash=password_hashes[role],
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+
+        user_role = db.execute(
+            select(UserRole).where(
+                UserRole.user_id == user.id,
+                UserRole.role == role,
+            )
+        ).scalar_one_or_none()
+        if user_role is None:
+            db.add(UserRole(id=uuid.uuid4(), user_id=user.id, role=role))
+
+        if role == UserRoleType.EMPLOYEE:
+            if employee.user_id is not None and employee.user_id != user.id:
+                raise RuntimeError("Demo employee is linked to an unexpected user")
+            employee.user_id = user.id
+
+    db.flush()
 
 
 def _get_or_create_period(

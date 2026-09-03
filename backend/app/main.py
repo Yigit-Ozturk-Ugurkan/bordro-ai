@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.core.event_loop import install_windows_event_loop_policy
 from app.core.exceptions import BordroError
 from app.db.session import engine
+from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.payroll import router as payroll_router
 
 # psycopg's async driver cannot run on Windows' default ProactorEventLoop.
@@ -21,6 +22,7 @@ app = FastAPI(
 )
 
 # Register API routes
+app.include_router(auth_router)
 app.include_router(payroll_router)
 
 
