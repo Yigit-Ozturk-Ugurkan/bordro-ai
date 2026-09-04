@@ -108,13 +108,13 @@ async def other_org_employee_id(
 
 
 class TestAuthenticationAPI:
-    async def test_login_returns_access_and_refresh_tokens(
+    async def test_login_returns_access_token_without_refresh_token_json(
         self, api_client: AsyncClient, seeded_async_session: AsyncSession
     ) -> None:
         tokens = await login_as(api_client, UserRoleType.EMPLOYEE)
 
         assert tokens["token_type"] == "bearer"
-        assert tokens["access_token"] != tokens["refresh_token"]
+        assert "refresh_token" not in tokens
         assert tokens["expires_in"] == settings.access_token_expire_minutes * 60
 
     async def test_login_rejects_bad_password_without_account_leak(
@@ -190,21 +190,20 @@ class TestAuthenticationAPI:
         assert body["employee_id"] == str(demo_employee_id)
         assert "password_hash" not in body
 
-    async def test_refresh_rotates_both_tokens(
+    async def test_refresh_rotates_cookie_and_access_token(
         self,
         api_client: AsyncClient,
         seeded_async_session: AsyncSession,
     ) -> None:
         original = await login_as(api_client, UserRoleType.EMPLOYEE)
-        response = await api_client.post(
-            "/api/v1/auth/refresh",
-            json={"refresh_token": original["refresh_token"]},
-        )
+        original_refresh = api_client.cookies.get(settings.auth_refresh_cookie_name)
+        response = await api_client.post("/api/v1/auth/refresh")
 
         assert response.status_code == 200
         refreshed = response.json()
         assert refreshed["access_token"] != original["access_token"]
-        assert refreshed["refresh_token"] != original["refresh_token"]
+        assert "refresh_token" not in refreshed
+        assert api_client.cookies.get(settings.auth_refresh_cookie_name) != original_refresh
 
     async def test_access_token_cannot_be_used_as_refresh_token(
         self, api_client: AsyncClient, seeded_async_session: AsyncSession
@@ -213,7 +212,9 @@ class TestAuthenticationAPI:
 
         response = await api_client.post(
             "/api/v1/auth/refresh",
-            json={"refresh_token": tokens["access_token"]},
+            headers={
+                "Cookie": f"{settings.auth_refresh_cookie_name}={tokens['access_token']}"
+            },
         )
 
         assert response.status_code == 401
@@ -225,10 +226,12 @@ class TestAuthenticationAPI:
         demo_employee_id: UUID,
     ) -> None:
         tokens = await login_as(api_client, UserRoleType.EMPLOYEE)
+        refresh_token = api_client.cookies.get(settings.auth_refresh_cookie_name)
+        assert refresh_token is not None
 
         response = await api_client.get(
             f"/api/v1/employees/{demo_employee_id}/payrolls/2026/1",
-            headers=bearer(tokens["refresh_token"]),
+            headers=bearer(refresh_token),
         )
 
         assert response.status_code == 401

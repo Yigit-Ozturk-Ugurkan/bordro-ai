@@ -8,8 +8,7 @@ import { AppRoutes } from "../routes/AppRoutes";
 import { currentUser } from "./fixtures";
 
 const authMocks = vi.hoisted(() => ({
-  hasSession: vi.fn(),
-  getCurrentUser: vi.fn(),
+  restoreSession: vi.fn(),
   login: vi.fn(),
   logout: vi.fn(),
 }));
@@ -38,7 +37,7 @@ function renderApplication(path: string) {
 describe("authentication routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMocks.hasSession.mockReturnValue(false);
+    authMocks.restoreSession.mockRejectedValue(new Error("No session"));
     payrollMocks.getPayrollPeriods.mockResolvedValue({
       employee_id: currentUser.employee_id,
       count: 0,
@@ -52,12 +51,20 @@ describe("authentication routes", () => {
     expect(await screen.findByRole("heading", { name: "Hesabınıza giriş yapın" })).toBeInTheDocument();
   });
 
+  it("restores a cookie-backed session on page reload", async () => {
+    authMocks.restoreSession.mockResolvedValue(currentUser);
+    renderApplication("/dashboard");
+
+    expect(await screen.findByText("Henüz bordro yok")).toBeInTheDocument();
+    expect(authMocks.restoreSession).toHaveBeenCalledOnce();
+  });
+
   it("submits login credentials and opens the dashboard", async () => {
     const user = userEvent.setup();
     authMocks.login.mockResolvedValue(currentUser);
     renderApplication("/login");
 
-    await user.type(screen.getByLabelText("E-posta"), "employee@demo.local");
+    await user.type(await screen.findByLabelText("E-posta"), "employee@demo.local");
     await user.type(screen.getByLabelText("Şifre"), "demo-password");
     await user.click(screen.getByRole("button", { name: "Giriş yap" }));
 
@@ -75,7 +82,7 @@ describe("authentication routes", () => {
     authMocks.login.mockRejectedValue(new Error("backend details"));
     renderApplication("/login");
 
-    await user.type(screen.getByLabelText("E-posta"), "employee@demo.local");
+    await user.type(await screen.findByLabelText("E-posta"), "employee@demo.local");
     await user.type(screen.getByLabelText("Şifre"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "Giriş yap" }));
 
@@ -87,8 +94,7 @@ describe("authentication routes", () => {
 
   it("logs out and returns to login", async () => {
     const user = userEvent.setup();
-    authMocks.hasSession.mockReturnValue(true);
-    authMocks.getCurrentUser.mockResolvedValue(currentUser);
+    authMocks.restoreSession.mockResolvedValue(currentUser);
     renderApplication("/dashboard");
 
     const logoutButton = await screen.findByRole("button", { name: /Çıkış/ });

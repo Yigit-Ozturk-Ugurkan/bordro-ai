@@ -6,6 +6,7 @@ from app.models.payroll_detail import (
     PayrollDeduction,
     PayrollEarning,
 )
+from app.models.refresh_session import RefreshSession
 from app.models.tax import (
     PayrollParameter,
     TaxBracket,
@@ -25,6 +26,7 @@ __all__ = [
     "PayrollEarning",
     "PayrollDeduction",
     "PayrollAbsence",
+    "RefreshSession",
     "TaxRuleSet",
     "TaxBracket",
     "PayrollParameter",

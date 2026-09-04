@@ -23,24 +23,22 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(authApi.hasSession());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
-    if (authApi.hasSession()) {
-      authApi
-        .getCurrentUser()
-        .then((currentUser) => {
-          if (active) setUser(currentUser);
-        })
-        .catch(() => {
-          authApi.logout();
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-    }
+    authApi
+      .restoreSession()
+      .then((currentUser) => {
+        if (active) setUser(currentUser);
+      })
+      .catch(() => {
+        if (active) setUser(null);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
     const expireSession = () => {
       if (active) {
@@ -62,8 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    authApi.logout();
     setUser(null);
+    void authApi.logout();
   }, []);
 
   const value = useMemo(

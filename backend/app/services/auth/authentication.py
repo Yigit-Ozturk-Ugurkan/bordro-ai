@@ -23,6 +23,8 @@ class TokenClaims:
     subject: UUID
     organization_id: UUID
     token_type: str
+    jti: UUID
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -33,13 +35,6 @@ class AuthenticatedUser:
     employee_id: UUID | None
     employee_organization_id: UUID | None = None
     email: str = ""
-
-
-@dataclass(frozen=True)
-class TokenPair:
-    access_token: str
-    refresh_token: str
-    access_expires_in: int
 
 
 class AuthenticationService:
@@ -121,13 +116,6 @@ class AuthenticationService:
         )
         return self._create_token(user, "refresh", lifetime)
 
-    def create_token_pair(self, user: AuthenticatedUser) -> TokenPair:
-        return TokenPair(
-            access_token=self.create_access_token(user),
-            refresh_token=self.create_refresh_token(user),
-            access_expires_in=self._settings.access_token_expire_minutes * 60,
-        )
-
     def decode_token(self, token: str, expected_type: str) -> TokenClaims:
         try:
             payload = jwt.decode(
@@ -142,6 +130,8 @@ class AuthenticationService:
                 subject=UUID(payload["sub"]),
                 organization_id=UUID(payload["org"]),
                 token_type=payload["type"],
+                jti=UUID(payload["jti"]),
+                expires_at=datetime.fromtimestamp(payload["exp"], timezone.utc),
             )
         except (jwt.PyJWTError, KeyError, TypeError, ValueError) as exc:
             raise AuthenticationError from exc

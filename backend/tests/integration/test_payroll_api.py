@@ -128,7 +128,7 @@ class TestSystemEndpoints:
         assert response.headers["access-control-allow-origin"] == (
             "http://localhost:5173"
         )
-        assert response.headers.get("access-control-allow-credentials") is None
+        assert response.headers["access-control-allow-credentials"] == "true"
 
 
 class TestPayrollListAPI:

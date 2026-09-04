@@ -13,9 +13,8 @@ export interface CurrentUser {
   employee_id: string | null;
 }
 
-export interface TokenPair {
+export interface AccessTokenResponse {
   access_token: string;
-  refresh_token: string;
   token_type: "bearer";
   expires_in: number;
 }

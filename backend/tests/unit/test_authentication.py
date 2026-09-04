@@ -1,6 +1,6 @@
 """Focused password, JWT, and future-write policy tests."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -56,6 +56,8 @@ def test_valid_access_token_has_minimal_identity_claims(
     assert claims.subject == principal.id
     assert claims.organization_id == principal.organization_id
     assert claims.token_type == "access"
+    assert claims.jti
+    assert claims.expires_at > datetime.now(timezone.utc)
 
 
 def test_expired_token_is_rejected(principal: AuthenticatedUser) -> None:

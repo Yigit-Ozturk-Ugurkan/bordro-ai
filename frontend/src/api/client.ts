@@ -1,8 +1,8 @@
 import { tokenStore } from "../auth/tokenStore";
-import type { TokenPair } from "./types";
+import type { AccessTokenResponse } from "./types";
 
 const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001"
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8001"
 ).replace(/[/]$/, "");
 
 export const SESSION_EXPIRED_EVENT = "bordro-ai:session-expired";
@@ -29,21 +29,17 @@ function notifySessionExpired(): void {
   }
 }
 
-async function refreshTokens(): Promise<boolean> {
+export async function refreshAccessToken(): Promise<boolean> {
   if (refreshRequest) return refreshRequest;
 
   refreshRequest = (async () => {
-    const refreshToken = tokenStore.get()?.refreshToken;
-    if (!refreshToken) return false;
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        credentials: "include",
       });
-      const tokens = await parseResponse<TokenPair>(response);
-      tokenStore.set(tokens);
+      const tokens = await parseResponse<AccessTokenResponse>(response);
+      tokenStore.set(tokens.access_token);
       return true;
     } catch {
       notifySessionExpired();
@@ -68,13 +64,13 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const accessToken = authenticated ? tokenStore.get()?.accessToken : null;
+  const accessToken = authenticated ? tokenStore.get() : null;
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
 
   if (authenticated && response.status === 401 && retryAfterRefresh) {
-    const refreshed = await refreshTokens();
+    const refreshed = await refreshAccessToken();
     if (refreshed) return request<T>(path, init, true, false);
   }
 

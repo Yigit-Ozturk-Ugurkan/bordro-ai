@@ -14,8 +14,17 @@ class Settings(BaseSettings):
     auth_algorithm: Literal["HS256"] = "HS256"
     access_token_expire_minutes: int = Field(default=15, ge=1, le=1440)
     refresh_token_expire_days: int = Field(default=7, ge=1, le=90)
+    auth_refresh_cookie_name: str = Field(
+        default="bordro_refresh", min_length=1, max_length=100
+    )
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    auth_cookie_path: str = Field(default="/api/v1/auth", pattern=r"^/")
+    login_rate_limit_attempts: int = Field(default=5, ge=1, le=100)
+    login_rate_limit_window_seconds: int = Field(default=300, ge=1, le=86400)
+    login_rate_limit_cooldown_seconds: int = Field(default=900, ge=1, le=86400)
     demo_auth_password: SecretStr | None = Field(default=None, min_length=12)
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -35,6 +44,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Authentication placeholders are forbidden in production"
                 )
+            if not self.auth_cookie_secure:
+                raise ValueError("Secure refresh cookies are required in production")
+        if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
+            raise ValueError("SameSite=None refresh cookies must also be Secure")
         return self
 
     @property
