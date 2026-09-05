@@ -7,6 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from app.models.enums import PayrollImportFieldReviewStatus, PayrollImportStatus
+from app.models.enums import (
+    PayrollCanonicalValueType,
+    PayrollFieldMappingStatus,
+    PayrollFieldParseStatus,
+)
 
 
 class ImportModel(BaseModel):
@@ -96,7 +101,57 @@ class PayrollImportFieldList(ImportModel):
     items: list[PayrollImportFieldRead]
 
 
+class PayrollImportTypedValue(ImportModel):
+    type: PayrollCanonicalValueType
+    value: str | int
+
+
+class PayrollImportMappedFieldRead(ImportModel):
+    id: UUID
+    source_field_id: UUID
+    source_external_field_id: str
+    source_label: str
+    raw_value: str | None
+    canonical_key: str | None
+    section_key: str | None
+    mapping_id: UUID | None
+    mapping_version: int | None
+    typed_value: PayrollImportTypedValue | None
+    candidate_canonical_keys: list[str]
+    mapping_status: PayrollFieldMappingStatus
+    parse_status: PayrollFieldParseStatus
+    review_status: PayrollImportFieldReviewStatus
+    review_reason_codes: list[str]
+
+
+class PayrollImportMappedFieldList(ImportModel):
+    import_id: UUID
+    count: int
+    items: list[PayrollImportMappedFieldRead]
+
+
+class PayrollImportMappingIssueRead(ImportModel):
+    canonical_key: str
+    section_key: str
+    target_value_type: PayrollCanonicalValueType
+    issue_code: str
+    review_status: PayrollImportFieldReviewStatus
+
+
+class PayrollImportMappingSummary(ImportModel):
+    import_id: UUID
+    source_field_count: int
+    mapped_count: int
+    unmapped_count: int
+    ambiguous_count: int
+    parse_failed_count: int
+    missing_count: int
+    review_required_count: int
+    issues: list[PayrollImportMappingIssueRead]
+
+
 __all__ = [
     "PayrollImportFieldList", "PayrollImportFieldRead", "PayrollImportList",
-    "PayrollImportListItem", "PayrollImportRead",
+    "PayrollImportListItem", "PayrollImportRead", "PayrollImportMappedFieldList",
+    "PayrollImportMappedFieldRead", "PayrollImportMappingSummary",
 ]

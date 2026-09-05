@@ -51,3 +51,31 @@ class PayrollImportFieldReviewStatus(StrEnum):
     UNREVIEWED = "UNREVIEWED"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
     MISSING = "MISSING"
+
+
+class PayrollFieldMappingScope(StrEnum):
+    SYSTEM = "SYSTEM"
+    ORGANIZATION = "ORGANIZATION"
+    TEMPLATE = "TEMPLATE"
+
+
+class PayrollCanonicalValueType(StrEnum):
+    DECIMAL = "DECIMAL"
+    INTEGER = "INTEGER"
+    DAY_COUNT = "DAY_COUNT"
+    DATE = "DATE"
+    TEXT = "TEXT"
+    IDENTIFIER = "IDENTIFIER"
+
+
+class PayrollFieldMappingStatus(StrEnum):
+    MAPPED = "MAPPED"
+    UNMAPPED = "UNMAPPED"
+    AMBIGUOUS = "AMBIGUOUS"
+    PARSE_FAILED = "PARSE_FAILED"
+
+
+class PayrollFieldParseStatus(StrEnum):
+    PARSED = "PARSED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    FAILED = "FAILED"

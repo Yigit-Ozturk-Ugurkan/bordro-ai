@@ -7,9 +7,12 @@ from app.models.payroll_detail import (
     PayrollEarning,
 )
 from app.models.payroll_import import (
+    PayrollFieldMapping,
     PayrollImport,
     PayrollImportDocument,
     PayrollImportField,
+    PayrollImportMappedField,
+    PayrollImportMappingIssue,
 )
 from app.models.refresh_session import RefreshSession
 from app.models.tax import (
@@ -34,6 +37,9 @@ __all__ = [
     "PayrollImport",
     "PayrollImportDocument",
     "PayrollImportField",
+    "PayrollFieldMapping",
+    "PayrollImportMappedField",
+    "PayrollImportMappingIssue",
     "RefreshSession",
     "TaxRuleSet",
     "TaxBracket",

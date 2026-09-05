@@ -12,11 +12,14 @@ from app.integrations.general_reader.client import GeneralReaderClient
 from app.models.enums import UserRoleType
 from app.schemas.payroll_import import (
     PayrollImportFieldList,
+    PayrollImportMappedFieldList,
+    PayrollImportMappingSummary,
     PayrollImportList,
     PayrollImportRead,
 )
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
+from app.services.imports.payroll_adapter_service import PayrollAdapterService
 from app.storage.document_storage import DocumentStorage
 
 router = APIRouter(prefix="/api/v1/payroll-imports", tags=["payroll-imports"])
@@ -93,3 +96,30 @@ async def process_payroll_import(
     reader: GeneralReaderClient = Depends(get_general_reader_client),
 ) -> PayrollImportRead:
     return await service(session, storage, reader).process(user, import_id)
+
+
+@router.post("/{import_id}/map", response_model=PayrollImportMappingSummary)
+async def map_payroll_import(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportMappingSummary:
+    return await PayrollAdapterService(session).run(user, import_id)
+
+
+@router.get("/{import_id}/mapped-fields", response_model=PayrollImportMappedFieldList)
+async def get_payroll_import_mapped_fields(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportMappedFieldList:
+    return await PayrollAdapterService(session).mapped_fields(user, import_id)
+
+
+@router.get("/{import_id}/mapping-summary", response_model=PayrollImportMappingSummary)
+async def get_payroll_import_mapping_summary(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportMappingSummary:
+    return await PayrollAdapterService(session).summary(user, import_id)

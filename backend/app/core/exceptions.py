@@ -129,3 +129,15 @@ class ImportProcessingFailedError(BordroError):
     status_code = 500
     code = "IMPORT_PROCESSING_FAILED"
     default_message = "The payroll import could not be processed"
+
+
+class PayrollImportMappingConflictError(BordroError):
+    status_code = 409
+    code = "IMPORT_MAPPING_CONFLICT"
+    default_message = "The payroll import is not ready for canonical mapping"
+
+
+class PayrollMappingConfigurationError(BordroError):
+    status_code = 500
+    code = "MAPPING_CONFIGURATION_INVALID"
+    default_message = "Payroll field mapping configuration is invalid"
