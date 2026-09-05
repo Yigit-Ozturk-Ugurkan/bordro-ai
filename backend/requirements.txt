@@ -8,5 +8,6 @@ pydantic-settings
 pytest
 pytest-asyncio
 httpx
+python-multipart>=0.0.9
 PyJWT
 pwdlib[argon2]

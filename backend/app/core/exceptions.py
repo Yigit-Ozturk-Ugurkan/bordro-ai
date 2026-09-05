@@ -13,6 +13,7 @@ class BordroError(Exception):
 
     status_code: int = 500
     default_message: str = "Internal error"
+    code: str | None = None
 
     def __init__(self, message: str | None = None) -> None:
         self.message = message or self.default_message
@@ -69,3 +70,62 @@ class TaxRuleSetNotFoundError(NotFoundError):
     """No active tax rule set covers the requested period."""
 
     default_message = "Tax rule set not found"
+
+
+class DocumentUploadError(BordroError):
+    status_code = 400
+    code = "INVALID_DOCUMENT_UPLOAD"
+    default_message = "The document upload is invalid"
+
+
+class DocumentTooLargeError(DocumentUploadError):
+    status_code = 413
+    code = "DOCUMENT_TOO_LARGE"
+    default_message = "The document exceeds the configured upload limit"
+
+
+class UnsupportedDocumentTypeError(DocumentUploadError):
+    status_code = 415
+    code = "UNSUPPORTED_DOCUMENT_TYPE"
+    default_message = "The document type is not supported"
+
+
+class DuplicateDocumentError(BordroError):
+    status_code = 409
+    code = "DUPLICATE_DOCUMENT"
+    default_message = "This document has already been imported"
+
+
+class PayrollImportNotFoundError(NotFoundError):
+    code = "IMPORT_NOT_FOUND"
+    default_message = "Payroll import not found"
+
+
+class PayrollImportStateConflictError(BordroError):
+    status_code = 409
+    code = "IMPORT_STATE_CONFLICT"
+    default_message = "The payroll import cannot transition from its current state"
+
+
+class GeneralReaderUnavailableError(BordroError):
+    status_code = 503
+    code = "GENERAL_READER_UNAVAILABLE"
+    default_message = "The document extraction service is unavailable"
+
+
+class GeneralReaderRejectedError(BordroError):
+    status_code = 502
+    code = "GENERAL_READER_REJECTED"
+    default_message = "The document extraction service rejected the document"
+
+
+class GeneralReaderContractInvalidError(BordroError):
+    status_code = 502
+    code = "GENERAL_READER_CONTRACT_INVALID"
+    default_message = "The document extraction response is invalid"
+
+
+class ImportProcessingFailedError(BordroError):
+    status_code = 500
+    code = "IMPORT_PROCESSING_FAILED"
+    default_message = "The payroll import could not be processed"

@@ -36,3 +36,18 @@ class CalculationMode(StrEnum):
     IMPORTED = "IMPORTED"
     CALCULATED = "CALCULATED"
     RECONCILED = "RECONCILED"
+
+
+class PayrollImportStatus(StrEnum):
+    UPLOADED = "UPLOADED"
+    PROCESSING = "PROCESSING"
+    EXTRACTED = "EXTRACTED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
+
+
+class PayrollImportFieldReviewStatus(StrEnum):
+    UNREVIEWED = "UNREVIEWED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    MISSING = "MISSING"

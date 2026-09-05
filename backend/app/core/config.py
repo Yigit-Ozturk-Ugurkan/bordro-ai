@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
@@ -25,6 +26,15 @@ class Settings(BaseSettings):
     login_rate_limit_cooldown_seconds: int = Field(default=900, ge=1, le=86400)
     demo_auth_password: SecretStr | None = Field(default=None, min_length=12)
     cors_origins: str = "http://localhost:5173"
+    payroll_document_storage_root: Path = Path("runtime/payroll-documents")
+    payroll_document_max_upload_bytes: int = Field(
+        default=25 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024
+    )
+    general_reader_base_url: str = "http://127.0.0.1:8010"
+    general_reader_client_id: str = ""
+    general_reader_shared_secret: SecretStr | None = None
+    general_reader_timeout_seconds: float = Field(default=180.0, gt=0, le=1800)
+    general_reader_allow_llm: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -40,6 +50,10 @@ class Settings(BaseSettings):
             sensitive_values = [self.auth_secret_key.get_secret_value()]
             if self.demo_auth_password is not None:
                 sensitive_values.append(self.demo_auth_password.get_secret_value())
+            if self.general_reader_shared_secret is not None:
+                sensitive_values.append(
+                    self.general_reader_shared_secret.get_secret_value()
+                )
             if any("change_me" in value.casefold() for value in sensitive_values):
                 raise ValueError(
                     "Authentication placeholders are forbidden in production"

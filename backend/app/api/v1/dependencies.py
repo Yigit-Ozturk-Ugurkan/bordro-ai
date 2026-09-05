@@ -14,6 +14,10 @@ takes a sync ``Session`` and is invoked inside ``run_sync``.
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
+from app.integrations.general_reader.client import GeneralReaderClient
+from app.storage.document_storage import DocumentStorage, LocalDocumentStorage
+
 from app.services.payroll.comparison_service import PayrollComparisonService
 from app.services.payroll.dashboard_service import DashboardService
 from app.services.payroll.payroll_read_service import PayrollReadService
@@ -65,3 +69,12 @@ def build_dashboard_service(session: Session) -> DashboardService:
         build_comparison_service(session),
         build_tax_status_service(session),
     )
+
+
+def get_document_storage() -> DocumentStorage:
+    settings = get_settings()
+    return LocalDocumentStorage(settings.payroll_document_storage_root)
+
+
+def get_general_reader_client() -> GeneralReaderClient:
+    return GeneralReaderClient(get_settings())

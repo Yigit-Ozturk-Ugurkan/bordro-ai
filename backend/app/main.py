@@ -9,6 +9,7 @@ from app.core.exceptions import BordroError
 from app.db.session import engine
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.payroll import router as payroll_router
+from app.api.v1.routes.payroll_import import router as payroll_import_router
 
 # psycopg's async driver cannot run on Windows' default ProactorEventLoop.
 # Installing the selector policy at import time keeps the intended runtime
@@ -33,6 +34,7 @@ app.add_middleware(
 # Register API routes
 app.include_router(auth_router)
 app.include_router(payroll_router)
+app.include_router(payroll_import_router)
 
 
 @app.exception_handler(BordroError)
@@ -40,15 +42,15 @@ async def handle_domain_error(request: Request, exc: BordroError) -> JSONRespons
     """
     Translate a domain error into its HTTP response.
 
-    Only messages the domain layer authored are rendered. Database and
+    Only messages and stable codes the domain layer authored are rendered. Database and
     driver exceptions are not BordroError instances, so they never reach
     this handler and never leak into a response body; they surface as a
     generic 500 from Starlette instead.
     """
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message},
-    )
+    content = {"detail": exc.message}
+    if exc.code is not None:
+        content["code"] = exc.code
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.get("/health", tags=["System"])

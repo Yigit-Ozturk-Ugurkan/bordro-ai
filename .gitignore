@@ -36,3 +36,7 @@ build/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# Protected local runtime documents (never static/public assets)
+backend/runtime/
+backend/.pytest-tmp/

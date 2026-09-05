@@ -1,0 +1,126 @@
+{
+  "schema_version": "1.0",
+  "producer": {"name": "general-reader", "version": "0.1.0"},
+  "request_id": "22222222-2222-2222-2222-222222222222",
+  "correlation_id": "22222222-2222-2222-2222-222222222222",
+  "tenant_context": {
+    "namespace": "bordro-ai",
+    "tenant_id": "11111111-1111-1111-1111-111111111111"
+  },
+  "document": {
+    "external_document_id": null,
+    "internal_document_ids": [41],
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "original_filename": "generic.png",
+    "page_count": 1
+  },
+  "templates": [{
+    "template_id": 7,
+    "template_version": 3,
+    "scope": "PRIVATE_TENANT",
+    "match_decision": "matched",
+    "match_score": 0.875,
+    "match_component_scores": {"layout": 0.9},
+    "page_numbers": [1]
+  }],
+  "pages": [{
+    "page_number": 1,
+    "internal_document_id": 41,
+    "width": 100,
+    "height": 200,
+    "ocr_engine": "fixture",
+    "ocr_confidence": 0.95,
+    "box_count": 3,
+    "line_count": 3,
+    "template_id": 7
+  }],
+  "fields": [{
+    "field_id": "field-a",
+    "source_label": "Generic A",
+    "source_text": "Generic A 123",
+    "raw_value": "123",
+    "normalized_value": "123",
+    "value_type": "number",
+    "confidence": 0.98,
+    "bbox": [0.1, 0.2, 0.3, 0.4],
+    "coordinate_space": "normalized_xyxy",
+    "page_number": 1,
+    "extraction_source": "rule",
+    "rule_index": 0,
+    "status": "EXTRACTED",
+    "warnings": []
+  }, {
+    "field_id": "field-b",
+    "source_label": "Generic B",
+    "source_text": "Generic B maybe",
+    "raw_value": "maybe",
+    "normalized_value": "maybe",
+    "value_type": "text",
+    "confidence": 0.4,
+    "bbox": null,
+    "coordinate_space": "normalized_xyxy",
+    "page_number": 1,
+    "extraction_source": "rule",
+    "rule_index": 1,
+    "status": "LOW_CONFIDENCE",
+    "warnings": ["LOW_CONFIDENCE"]
+  }],
+  "missing_fields": [{
+    "field_id": "field-b",
+    "source_label": "Generic B",
+    "value_type": "text",
+    "required": false,
+    "reason_code": "LOW_CONFIDENCE",
+    "safe_reason_text": "A value was observed below the confidence threshold.",
+    "observed_value": "maybe",
+    "observed_confidence": 0.4,
+    "page_number": 1
+  }, {
+    "field_id": "field-c",
+    "source_label": "Generic C",
+    "value_type": "text",
+    "required": true,
+    "reason_code": "NOT_FOUND",
+    "safe_reason_text": "No value could be extracted from the document.",
+    "observed_value": null,
+    "observed_confidence": null,
+    "page_number": 1
+  }],
+  "tables": [{
+    "table_id": "generic-table",
+    "source_label": "Generic Table",
+    "columns": [{"column_id": "c1", "source_label": "Column", "value_type": "text"}],
+    "rows": [{
+      "row_index": 0,
+      "page_number": 1,
+      "bbox": null,
+      "coordinate_space": "normalized_xyxy",
+      "extraction_source": "rule",
+      "cells": [{
+        "column_id": "c1",
+        "source_label": "Column",
+        "raw_value": "value",
+        "normalized_value": "value",
+        "value_type": "text",
+        "confidence": null,
+        "bbox": null,
+        "coordinate_space": "normalized_xyxy",
+        "extraction_source": "rule"
+      }]
+    }],
+    "page_numbers": [1],
+    "warnings": ["TABLE_CELL_CONFIDENCE_UNAVAILABLE"]
+  }],
+  "warnings": [{
+    "code": "TABLE_CELL_CONFIDENCE_UNAVAILABLE",
+    "message": "The current extractor does not provide per-cell confidence or bounding boxes.",
+    "page_number": null,
+    "field_id": null,
+    "table_id": "generic-table"
+  }],
+  "timings": {
+    "ocr_ms": 10,
+    "total_ms": 20,
+    "pages": [{"page_number": 1, "ocr_ms": 10, "total_ms": 20}]
+  }
+}
