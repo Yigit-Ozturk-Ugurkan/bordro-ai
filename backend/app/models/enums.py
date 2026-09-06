@@ -79,3 +79,25 @@ class PayrollFieldParseStatus(StrEnum):
     PARSED = "PARSED"
     NOT_APPLICABLE = "NOT_APPLICABLE"
     FAILED = "FAILED"
+
+
+class PayrollImportReviewStatus(StrEnum):
+    IN_PROGRESS = "IN_PROGRESS"
+    READY_FOR_SNAPSHOT = "READY_FOR_SNAPSHOT"
+    SNAPSHOTTED = "SNAPSHOTTED"
+
+
+class PayrollReviewCorrectionAction(StrEnum):
+    APPLY = "APPLY"
+    REVERT = "REVERT"
+
+
+class PayrollReviewFieldStatus(StrEnum):
+    PENDING = "PENDING"
+    RESOLVED = "RESOLVED"
+    STALE = "STALE"
+
+
+class PayrollReviewValueProvenance(StrEnum):
+    ADAPTER = "ADAPTER"
+    REVIEWER_CORRECTION = "REVIEWER_CORRECTION"

@@ -4,13 +4,17 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import PayrollImportFieldReviewStatus, PayrollImportStatus
 from app.models.enums import (
     PayrollCanonicalValueType,
     PayrollFieldMappingStatus,
     PayrollFieldParseStatus,
+    PayrollImportReviewStatus,
+    PayrollReviewCorrectionAction,
+    PayrollReviewFieldStatus,
+    PayrollReviewValueProvenance,
 )
 
 
@@ -150,8 +154,178 @@ class PayrollImportMappingSummary(ImportModel):
     issues: list[PayrollImportMappingIssueRead]
 
 
+class PayrollReviewCorrectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_review_version: int = Field(ge=1)
+    canonical_key: str | None = Field(default=None, min_length=1, max_length=100)
+    value: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("value", "reason")
+    @classmethod
+    def reject_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+
+class PayrollReviewRevertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_review_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def reject_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+
+class PayrollReviewFinalizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_review_version: int = Field(ge=1)
+
+
+class PayrollReviewTypedValue(ImportModel):
+    type: PayrollCanonicalValueType
+    value: str | int
+
+
+class PayrollReviewSourceRead(ImportModel):
+    field_id: UUID
+    external_field_id: str
+    label: str
+    source_text: str | None
+    raw_value: str | None
+    normalized_value: str | None
+    source_value_type: str | None
+    confidence: str | None
+    page_number: int | None
+    bbox: list | None
+    extraction_source: str | None
+    staging_review_status: PayrollImportFieldReviewStatus
+
+
+class PayrollReviewAdapterRead(ImportModel):
+    mapped_field_id: UUID
+    canonical_key: str | None
+    section_key: str | None
+    mapping_status: PayrollFieldMappingStatus
+    parse_status: PayrollFieldParseStatus
+    typed_value: PayrollReviewTypedValue | None
+    candidate_canonical_keys: list[str]
+    review_status: PayrollImportFieldReviewStatus
+    review_reason_codes: list[str]
+    fingerprint: str
+
+
+class PayrollReviewCorrectionRead(ImportModel):
+    id: UUID
+    revision: int
+    action: PayrollReviewCorrectionAction
+    canonical_key: str | None
+    typed_value: PayrollReviewTypedValue | None
+    reviewer_user_id: UUID
+    reason: str
+    created_at: datetime
+    is_stale: bool
+
+
+class PayrollReviewEffectiveRead(ImportModel):
+    canonical_key: str | None
+    section_key: str | None
+    typed_value: PayrollReviewTypedValue | None
+    provenance: PayrollReviewValueProvenance | None
+
+
+class PayrollReviewFieldRead(ImportModel):
+    source: PayrollReviewSourceRead
+    adapter: PayrollReviewAdapterRead
+    correction: PayrollReviewCorrectionRead | None
+    correction_history: list[PayrollReviewCorrectionRead]
+    effective: PayrollReviewEffectiveRead
+    review_status: PayrollReviewFieldStatus
+    issue_codes: list[str]
+
+
+class PayrollReviewIssueRead(ImportModel):
+    code: str
+    canonical_key: str | None = None
+    source_field_id: UUID | None = None
+
+
+class PayrollImportReviewRead(ImportModel):
+    id: UUID
+    import_id: UUID
+    status: PayrollImportReviewStatus
+    version: int
+    started_by_user_id: UUID
+    started_at: datetime
+    last_reviewed_by_user_id: UUID
+    last_reviewed_at: datetime
+    current_snapshot_id: UUID | None
+    complete: bool
+    issues: list[PayrollReviewIssueRead]
+    fields: list[PayrollReviewFieldRead]
+
+
+class PayrollReviewSnapshotSummary(ImportModel):
+    id: UUID
+    import_id: UUID
+    review_id: UUID
+    snapshot_version: int
+    created_by_user_id: UUID
+    created_at: datetime
+    source_staging_checksum: str
+    adapter_output_checksum: str
+    review_corrections_checksum: str
+    snapshot_checksum: str
+    field_count: int
+    issue_count: int
+
+
+class PayrollReviewSnapshotFieldRead(ImportModel):
+    id: UUID
+    source_import_field_id: UUID
+    source_mapped_field_id: UUID | None
+    source_field_id: str
+    source_label: str
+    source_text: str | None
+    raw_value: str | None
+    source_value_type: str | None
+    effective_canonical_key: str | None
+    section_key: str | None
+    typed_value: PayrollReviewTypedValue
+    provenance: PayrollReviewValueProvenance
+    confidence: str | None
+    page_number: int | None
+    bbox: list | None
+    extraction_source: str | None
+    original_mapping_status: PayrollFieldMappingStatus
+    review_status: PayrollReviewFieldStatus
+    correction_id: UUID | None
+    adapter_fingerprint: str
+
+
+class PayrollReviewSnapshotRead(PayrollReviewSnapshotSummary):
+    fields: list[PayrollReviewSnapshotFieldRead]
+
+
+class PayrollReviewSnapshotList(ImportModel):
+    import_id: UUID
+    count: int
+    items: list[PayrollReviewSnapshotSummary]
+
+
 __all__ = [
     "PayrollImportFieldList", "PayrollImportFieldRead", "PayrollImportList",
     "PayrollImportListItem", "PayrollImportRead", "PayrollImportMappedFieldList",
     "PayrollImportMappedFieldRead", "PayrollImportMappingSummary",
+    "PayrollImportReviewRead", "PayrollReviewCorrectionRequest",
+    "PayrollReviewFinalizeRequest", "PayrollReviewRevertRequest",
+    "PayrollReviewSnapshotList", "PayrollReviewSnapshotRead",
 ]

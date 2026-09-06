@@ -141,3 +141,54 @@ class PayrollMappingConfigurationError(BordroError):
     status_code = 500
     code = "MAPPING_CONFIGURATION_INVALID"
     default_message = "Payroll field mapping configuration is invalid"
+
+
+class PayrollReviewNotFoundError(NotFoundError):
+    code = "REVIEW_NOT_FOUND"
+    default_message = "Payroll import review not found"
+
+
+class PayrollReviewStateConflictError(BordroError):
+    status_code = 409
+    code = "REVIEW_STATE_CONFLICT"
+    default_message = "The payroll import is not ready for review"
+
+
+class PayrollReviewVersionConflictError(BordroError):
+    status_code = 409
+    code = "REVIEW_VERSION_CONFLICT"
+    default_message = "The payroll import review has changed"
+
+
+class PayrollReviewFieldNotFoundError(NotFoundError):
+    code = "REVIEW_FIELD_NOT_FOUND"
+    default_message = "Payroll import review field not found"
+
+
+class InvalidCanonicalOverrideError(BordroError):
+    status_code = 422
+    code = "INVALID_CANONICAL_OVERRIDE"
+    default_message = "The canonical payroll field override is invalid"
+
+
+class InvalidReviewValueError(BordroError):
+    status_code = 422
+    code = "INVALID_REVIEW_VALUE"
+    default_message = "The corrected payroll field value is invalid"
+
+
+class CorrectionStaleError(BordroError):
+    status_code = 409
+    code = "CORRECTION_STALE"
+    default_message = "The correction no longer matches the adapter output"
+
+
+class PayrollReviewIncompleteError(BordroError):
+    status_code = 409
+    code = "REVIEW_INCOMPLETE"
+    default_message = "The payroll import review is incomplete"
+
+
+class PayrollReviewSnapshotNotFoundError(NotFoundError):
+    code = "SNAPSHOT_NOT_FOUND"
+    default_message = "Payroll import review snapshot not found"

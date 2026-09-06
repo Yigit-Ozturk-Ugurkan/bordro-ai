@@ -19,6 +19,7 @@ from app.models.enums import (
     PayrollFieldMappingStatus,
     PayrollFieldParseStatus,
     PayrollImportFieldReviewStatus,
+    PayrollImportReviewStatus,
     PayrollImportStatus,
 )
 from app.models.payroll_import import (
@@ -28,6 +29,7 @@ from app.models.payroll_import import (
     PayrollImportMappingIssue,
 )
 from app.repositories.payroll_mapping_repository import PayrollMappingRepository
+from app.repositories.payroll_review_repository import PayrollReviewRepository
 from app.schemas.payroll_import import (
     PayrollImportMappedFieldList,
     PayrollImportMappedFieldRead,
@@ -42,6 +44,7 @@ from app.services.imports.canonical_fields import (
 )
 from app.services.imports.label_normalization import normalize_source_label
 from app.services.imports.value_parsing import ParsedValue, ValueParseError, parse_typed_value
+from app.services.imports.review_checksums import adapter_output_checksum
 
 LOW_CONFIDENCE_THRESHOLD = Decimal("0.80")
 _SCOPE_RANK = {
@@ -64,6 +67,8 @@ class PayrollAdapterService:
             if item.status not in {PayrollImportStatus.EXTRACTED, PayrollImportStatus.REVIEW_REQUIRED}:
                 raise PayrollImportMappingConflictError()
 
+            review_repository = PayrollReviewRepository(sync)
+            review = review_repository.get_review_for_update(user.organization_id, import_id)
             rows = [self._adapt_field(repository, item, field) for field in item.fields]
             present_keys = {
                 row.canonical_key for row in rows
@@ -82,7 +87,15 @@ class PayrollAdapterService:
             ) for definition in REQUIRED_CANONICAL_FIELDS
                 if definition.canonical_key not in present_keys]
             repository.replace_results(item.organization_id, item.id, rows, issues)
-            return self._summary(item.id, rows, issues)
+            stored_rows = repository.list_results(user.organization_id, import_id)
+            if review is not None:
+                current_checksum = adapter_output_checksum(stored_rows)
+                if current_checksum != review.adapter_output_checksum:
+                    review.status = PayrollImportReviewStatus.IN_PROGRESS
+                    review.row_version += 1
+                    review.adapter_output_checksum = current_checksum
+                    sync.flush()
+            return self._summary(item.id, stored_rows, issues)
 
         try:
             result = await self._session.run_sync(work)

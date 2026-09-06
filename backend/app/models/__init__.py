@@ -15,6 +15,12 @@ from app.models.payroll_import import (
     PayrollImportMappingIssue,
 )
 from app.models.refresh_session import RefreshSession
+from app.models.payroll_review import (
+    PayrollImportFieldCorrection,
+    PayrollImportReview,
+    PayrollImportReviewSnapshot,
+    PayrollImportReviewSnapshotField,
+)
 from app.models.tax import (
     PayrollParameter,
     TaxBracket,
@@ -40,6 +46,10 @@ __all__ = [
     "PayrollFieldMapping",
     "PayrollImportMappedField",
     "PayrollImportMappingIssue",
+    "PayrollImportReview",
+    "PayrollImportFieldCorrection",
+    "PayrollImportReviewSnapshot",
+    "PayrollImportReviewSnapshotField",
     "RefreshSession",
     "TaxRuleSet",
     "TaxBracket",

@@ -12,14 +12,21 @@ from app.integrations.general_reader.client import GeneralReaderClient
 from app.models.enums import UserRoleType
 from app.schemas.payroll_import import (
     PayrollImportFieldList,
+    PayrollImportReviewRead,
     PayrollImportMappedFieldList,
     PayrollImportMappingSummary,
     PayrollImportList,
     PayrollImportRead,
+    PayrollReviewCorrectionRequest,
+    PayrollReviewFinalizeRequest,
+    PayrollReviewRevertRequest,
+    PayrollReviewSnapshotList,
+    PayrollReviewSnapshotRead,
 )
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
 from app.services.imports.payroll_adapter_service import PayrollAdapterService
+from app.services.imports.payroll_review_service import PayrollReviewService
 from app.storage.document_storage import DocumentStorage
 
 router = APIRouter(prefix="/api/v1/payroll-imports", tags=["payroll-imports"])
@@ -123,3 +130,89 @@ async def get_payroll_import_mapping_summary(
     session: AsyncSession = Depends(get_db),
 ) -> PayrollImportMappingSummary:
     return await PayrollAdapterService(session).summary(user, import_id)
+
+
+@router.post("/{import_id}/review", response_model=PayrollImportReviewRead)
+async def start_payroll_import_review(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportReviewRead:
+    return await PayrollReviewService(session).start(user, import_id)
+
+
+@router.get("/{import_id}/review", response_model=PayrollImportReviewRead)
+async def get_payroll_import_review(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportReviewRead:
+    return await PayrollReviewService(session).get(user, import_id)
+
+
+@router.post(
+    "/{import_id}/review/fields/{mapped_field_id}",
+    response_model=PayrollImportReviewRead,
+)
+async def correct_payroll_import_review_field(
+    import_id: UUID,
+    mapped_field_id: UUID,
+    request: PayrollReviewCorrectionRequest,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportReviewRead:
+    return await PayrollReviewService(session).correct(
+        user, import_id, mapped_field_id, request,
+    )
+
+
+@router.post(
+    "/{import_id}/review/fields/{mapped_field_id}/revert",
+    response_model=PayrollImportReviewRead,
+)
+async def revert_payroll_import_review_field(
+    import_id: UUID,
+    mapped_field_id: UUID,
+    request: PayrollReviewRevertRequest,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollImportReviewRead:
+    return await PayrollReviewService(session).revert(
+        user, import_id, mapped_field_id, request,
+    )
+
+
+@router.post(
+    "/{import_id}/review/finalize", response_model=PayrollReviewSnapshotRead,
+)
+async def finalize_payroll_import_review(
+    import_id: UUID,
+    request: PayrollReviewFinalizeRequest,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollReviewSnapshotRead:
+    return await PayrollReviewService(session).finalize(user, import_id, request)
+
+
+@router.get(
+    "/{import_id}/review/snapshots", response_model=PayrollReviewSnapshotList,
+)
+async def list_payroll_import_review_snapshots(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollReviewSnapshotList:
+    return await PayrollReviewService(session).snapshots(user, import_id)
+
+
+@router.get(
+    "/{import_id}/review/snapshots/{snapshot_id}",
+    response_model=PayrollReviewSnapshotRead,
+)
+async def get_payroll_import_review_snapshot(
+    import_id: UUID,
+    snapshot_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollReviewSnapshotRead:
+    return await PayrollReviewService(session).snapshot(user, import_id, snapshot_id)
