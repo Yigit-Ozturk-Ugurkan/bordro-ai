@@ -21,6 +21,10 @@ from app.models.payroll_review import (
     PayrollImportReviewSnapshot,
     PayrollImportReviewSnapshotField,
 )
+from app.models.payroll_validation import (
+    PayrollImportValidationResult,
+    PayrollImportValidationRun,
+)
 from app.models.tax import (
     PayrollParameter,
     TaxBracket,
@@ -50,6 +54,8 @@ __all__ = [
     "PayrollImportFieldCorrection",
     "PayrollImportReviewSnapshot",
     "PayrollImportReviewSnapshotField",
+    "PayrollImportValidationRun",
+    "PayrollImportValidationResult",
     "RefreshSession",
     "TaxRuleSet",
     "TaxBracket",

@@ -101,3 +101,30 @@ class PayrollReviewFieldStatus(StrEnum):
 class PayrollReviewValueProvenance(StrEnum):
     ADAPTER = "ADAPTER"
     REVIEWER_CORRECTION = "REVIEWER_CORRECTION"
+
+
+class PayrollValidationRunStatus(StrEnum):
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class PayrollValidationSeverity(StrEnum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    BLOCKING = "BLOCKING"
+
+
+class PayrollValidationCategory(StrEnum):
+    STRUCTURAL = "STRUCTURAL"
+    ARITHMETIC = "ARITHMETIC"
+    IDENTITY = "IDENTITY"
+    PERIOD = "PERIOD"
+    TAX_RECONCILIATION = "TAX_RECONCILIATION"
+    DUPLICATE_CONTEXT = "DUPLICATE_CONTEXT"
+
+
+class PayrollValidationReadiness(StrEnum):
+    READY_FOR_FUTURE_APPROVAL = "READY_FOR_FUTURE_APPROVAL"
+    NOT_READY = "NOT_READY"

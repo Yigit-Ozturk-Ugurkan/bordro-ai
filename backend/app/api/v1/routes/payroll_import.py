@@ -23,10 +23,15 @@ from app.schemas.payroll_import import (
     PayrollReviewSnapshotList,
     PayrollReviewSnapshotRead,
 )
+from app.schemas.payroll_validation import (
+    PayrollValidationRunList,
+    PayrollValidationRunRead,
+)
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
 from app.services.imports.payroll_adapter_service import PayrollAdapterService
 from app.services.imports.payroll_review_service import PayrollReviewService
+from app.services.imports.payroll_validation_service import PayrollValidationService
 from app.storage.document_storage import DocumentStorage
 
 router = APIRouter(prefix="/api/v1/payroll-imports", tags=["payroll-imports"])
@@ -216,3 +221,41 @@ async def get_payroll_import_review_snapshot(
     session: AsyncSession = Depends(get_db),
 ) -> PayrollReviewSnapshotRead:
     return await PayrollReviewService(session).snapshot(user, import_id, snapshot_id)
+
+
+@router.post(
+    "/{import_id}/review/snapshots/{snapshot_id}/validate",
+    response_model=PayrollValidationRunRead,
+)
+async def validate_payroll_import_review_snapshot(
+    import_id: UUID,
+    snapshot_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollValidationRunRead:
+    return await PayrollValidationService(session).validate_snapshot(
+        user, import_id, snapshot_id,
+    )
+
+
+@router.get(
+    "/{import_id}/validations", response_model=PayrollValidationRunList,
+)
+async def list_payroll_import_validations(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollValidationRunList:
+    return await PayrollValidationService(session).list(user, import_id)
+
+
+@router.get(
+    "/{import_id}/validations/{run_id}", response_model=PayrollValidationRunRead,
+)
+async def get_payroll_import_validation(
+    import_id: UUID,
+    run_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollValidationRunRead:
+    return await PayrollValidationService(session).get(user, import_id, run_id)

@@ -192,3 +192,14 @@ class PayrollReviewIncompleteError(BordroError):
 class PayrollReviewSnapshotNotFoundError(NotFoundError):
     code = "SNAPSHOT_NOT_FOUND"
     default_message = "Payroll import review snapshot not found"
+
+
+class PayrollValidationRunNotFoundError(NotFoundError):
+    code = "VALIDATION_RUN_NOT_FOUND"
+    default_message = "Payroll import validation run not found"
+
+
+class PayrollValidationRulesetUnsupportedError(BordroError):
+    status_code = 422
+    code = "VALIDATION_RULESET_UNSUPPORTED"
+    default_message = "Payroll validation ruleset is not supported"
