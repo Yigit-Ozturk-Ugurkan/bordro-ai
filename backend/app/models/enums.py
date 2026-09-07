@@ -128,3 +128,14 @@ class PayrollValidationCategory(StrEnum):
 class PayrollValidationReadiness(StrEnum):
     READY_FOR_FUTURE_APPROVAL = "READY_FOR_FUTURE_APPROVAL"
     NOT_READY = "NOT_READY"
+
+
+class PayrollApprovalDecision(StrEnum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class PayrollApprovalStatus(StrEnum):
+    NOT_DECIDED = "NOT_DECIDED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"

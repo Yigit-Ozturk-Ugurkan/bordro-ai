@@ -1,6 +1,10 @@
 from app.models.employee import Employee
 from app.models.organization import Organization
 from app.models.payroll import Payroll, PayrollVersion
+from app.models.payroll_approval import (
+    PayrollImportApproval,
+    PayrollImportValidationAcknowledgement,
+)
 from app.models.payroll_detail import (
     PayrollAbsence,
     PayrollDeduction,
@@ -41,6 +45,8 @@ __all__ = [
     "Employee",
     "Payroll",
     "PayrollVersion",
+    "PayrollImportApproval",
+    "PayrollImportValidationAcknowledgement",
     "PayrollEarning",
     "PayrollDeduction",
     "PayrollAbsence",

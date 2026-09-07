@@ -203,3 +203,62 @@ class PayrollValidationRulesetUnsupportedError(BordroError):
     status_code = 422
     code = "VALIDATION_RULESET_UNSUPPORTED"
     default_message = "Payroll validation ruleset is not supported"
+
+
+class PayrollApprovalNotFoundError(NotFoundError):
+    code = "APPROVAL_NOT_FOUND"
+    default_message = "Payroll import approval not found"
+
+
+class PayrollApprovalValidationRequiredError(BordroError):
+    status_code = 409
+    code = "APPROVAL_VALIDATION_REQUIRED"
+    default_message = "A validation run is required before an approval decision"
+
+
+class PayrollApprovalValidationNotCompletedError(BordroError):
+    status_code = 409
+    code = "APPROVAL_VALIDATION_NOT_COMPLETED"
+    default_message = "The validation run is not completed"
+
+
+class PayrollApprovalValidationNotReadyError(BordroError):
+    status_code = 409
+    code = "APPROVAL_VALIDATION_NOT_READY"
+    default_message = "The validation run is not ready for approval"
+
+
+class PayrollApprovalWarningsUnacknowledgedError(BordroError):
+    status_code = 409
+    code = "APPROVAL_WARNINGS_UNACKNOWLEDGED"
+    default_message = "All validation warnings must be acknowledged before approval"
+
+
+class PayrollApprovalAlreadyDecidedError(BordroError):
+    status_code = 409
+    code = "APPROVAL_ALREADY_DECIDED"
+    default_message = "This validation run already has a terminal approval decision"
+
+
+class PayrollApprovalStateConflictError(BordroError):
+    status_code = 409
+    code = "APPROVAL_STATE_CONFLICT"
+    default_message = "The payroll approval state conflicts with this operation"
+
+
+class InvalidWarningAcknowledgementError(BordroError):
+    status_code = 422
+    code = "INVALID_WARNING_ACKNOWLEDGEMENT"
+    default_message = "Only a warning from the exact validation run can be acknowledged"
+
+
+class WarningAlreadyAcknowledgedError(BordroError):
+    status_code = 409
+    code = "WARNING_ALREADY_ACKNOWLEDGED"
+    default_message = "This validation warning is already acknowledged"
+
+
+class PayrollApprovalContextStaleError(BordroError):
+    status_code = 409
+    code = "APPROVAL_CONTEXT_STALE"
+    default_message = "The immutable snapshot and validation evidence do not match"
