@@ -39,6 +39,7 @@ class Payroll(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "period_month >= 1 AND period_month <= 12",
             name="ck_payroll_period_month",
         ),
+        UniqueConstraint("id", "organization_id", name="uq_payroll_id_org"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -81,6 +82,10 @@ class PayrollVersion(UUIDPrimaryKeyMixin, Base):
             "payroll_id",
             unique=True,
             postgresql_where=text("is_current = true"),
+        ),
+        UniqueConstraint(
+            "id", "payroll_id", "revision_no",
+            name="uq_payroll_version_materialization_scope",
         ),
     )
 
@@ -194,6 +199,7 @@ class PayrollVersion(UUIDPrimaryKeyMixin, Base):
 
     source_import_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("payroll_imports.id", ondelete="RESTRICT"),
         nullable=True,
     )
 

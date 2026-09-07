@@ -34,12 +34,20 @@ from app.schemas.payroll_approval import (
     PayrollRejectRequest,
     PayrollWarningAcknowledgementRequest,
 )
+from app.schemas.payroll_materialization import (
+    PayrollMaterializationRead,
+    PayrollMaterializationStateRead,
+    PayrollMaterializeRequest,
+)
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
 from app.services.imports.payroll_adapter_service import PayrollAdapterService
 from app.services.imports.payroll_review_service import PayrollReviewService
 from app.services.imports.payroll_validation_service import PayrollValidationService
 from app.services.imports.payroll_approval_service import PayrollApprovalService
+from app.services.imports.payroll_materialization_service import (
+    PayrollMaterializationService,
+)
 from app.storage.document_storage import DocumentStorage
 
 router = APIRouter(prefix="/api/v1/payroll-imports", tags=["payroll-imports"])
@@ -335,3 +343,32 @@ async def reject_payroll_import_validation(
     return await PayrollApprovalService(session).reject(
         user, import_id, run_id, request.reason,
     )
+
+
+@router.post(
+    "/{import_id}/approvals/{approval_id}/materialize",
+    response_model=PayrollMaterializationRead,
+)
+async def materialize_payroll_import_approval(
+    import_id: UUID,
+    approval_id: UUID,
+    request: PayrollMaterializeRequest,
+    user: AuthenticatedUser = Depends(require_roles(*APPROVAL_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollMaterializationRead:
+    del request
+    return await PayrollMaterializationService(session).materialize(
+        user, import_id, approval_id,
+    )
+
+
+@router.get(
+    "/{import_id}/materialization",
+    response_model=PayrollMaterializationStateRead,
+)
+async def get_current_payroll_import_materialization(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollMaterializationStateRead:
+    return await PayrollMaterializationService(session).current(user, import_id)

@@ -28,6 +28,7 @@ class PayrollSourceType(StrEnum):
     CSV = "CSV"
     XLSX = "XLSX"
     PDF = "PDF"
+    DOCUMENT = "DOCUMENT"
     API = "API"
     CALCULATED = "CALCULATED"
 

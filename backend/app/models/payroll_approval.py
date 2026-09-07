@@ -45,6 +45,10 @@ class PayrollImportApproval(UUIDPrimaryKeyMixin, Base):
             name="fk_import_approval_validation_scope", ondelete="RESTRICT",
         ),
         UniqueConstraint("validation_run_id", name="uq_import_approval_validation_run"),
+        UniqueConstraint(
+            "id", "payroll_import_id", "review_snapshot_id", "validation_run_id",
+            "organization_id", name="uq_import_approval_materialization_scope",
+        ),
         CheckConstraint("length(snapshot_checksum) = 64", name="ck_import_approval_snapshot_checksum"),
         CheckConstraint(
             "length(validation_result_checksum) = 64",

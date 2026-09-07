@@ -262,3 +262,51 @@ class PayrollApprovalContextStaleError(BordroError):
     status_code = 409
     code = "APPROVAL_CONTEXT_STALE"
     default_message = "The immutable snapshot and validation evidence do not match"
+
+
+class PayrollMaterializationNotApprovedError(BordroError):
+    status_code = 409
+    code = "MATERIALIZATION_NOT_APPROVED"
+    default_message = "An exact current approved decision is required for materialization"
+
+
+class PayrollMaterializationContextStaleError(BordroError):
+    status_code = 409
+    code = "MATERIALIZATION_CONTEXT_STALE"
+    default_message = "The approved evidence is no longer the current materialization context"
+
+
+class PayrollMaterializationIdentityInvalidError(BordroError):
+    status_code = 422
+    code = "MATERIALIZATION_IDENTITY_INVALID"
+    default_message = "The approved employee identity does not resolve exactly"
+
+
+class PayrollMaterializationPeriodInvalidError(BordroError):
+    status_code = 422
+    code = "MATERIALIZATION_PERIOD_INVALID"
+    default_message = "The approved payroll period is invalid"
+
+
+class PayrollMaterializationRequiredFieldMissingError(BordroError):
+    status_code = 422
+    code = "MATERIALIZATION_REQUIRED_FIELD_MISSING"
+    default_message = "A required authoritative snapshot field is missing"
+
+
+class PayrollMaterializationFieldTypeInvalidError(BordroError):
+    status_code = 422
+    code = "MATERIALIZATION_FIELD_TYPE_INVALID"
+    default_message = "An authoritative snapshot field has an invalid type or precision"
+
+
+class PayrollMaterializationStateConflictError(BordroError):
+    status_code = 409
+    code = "MATERIALIZATION_STATE_CONFLICT"
+    default_message = "The authoritative payroll state conflicts with materialization"
+
+
+class PayrollMaterializationIntegrityFailedError(BordroError):
+    status_code = 409
+    code = "MATERIALIZATION_INTEGRITY_FAILED"
+    default_message = "The approved materialization evidence failed integrity verification"

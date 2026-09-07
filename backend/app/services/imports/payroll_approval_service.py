@@ -54,7 +54,7 @@ class PayrollApprovalService:
         def work(sync):
             repository = PayrollApprovalRepository(sync)
             run, snapshot = self._locked_context(repository, user, import_id, run_id)
-            self._verify_context(run, snapshot)
+            self.verify_context(run, snapshot)
             if repository.decision_for_run(user.organization_id, run_id) is not None:
                 raise PayrollApprovalAlreadyDecidedError()
             result = repository.get_result(user.organization_id, run_id, result_id)
@@ -93,7 +93,7 @@ class PayrollApprovalService:
         def work(sync):
             repository = PayrollApprovalRepository(sync)
             run, snapshot = self._locked_context(repository, user, import_id, run_id)
-            self._verify_context(run, snapshot)
+            self.verify_context(run, snapshot)
             if repository.decision_for_run(user.organization_id, run_id) is not None:
                 raise PayrollApprovalAlreadyDecidedError()
 
@@ -142,13 +142,11 @@ class PayrollApprovalService:
                       import_id: UUID) -> PayrollApprovalStateRead:
         def work(sync):
             repository = PayrollApprovalRepository(sync)
-            self._require_import(repository, user, import_id)
-            snapshot_id = repository.current_snapshot_id(user.organization_id, import_id)
+            snapshot_id, run = self.resolve_current_context(
+                repository, user, import_id,
+            )
             if snapshot_id is None:
                 return self._empty_state(import_id)
-            run = repository.latest_run_for_snapshot(
-                user.organization_id, import_id, snapshot_id,
-            )
             if run is None:
                 return self._empty_state(import_id, snapshot_id)
             return self._state_for_run(repository, run)
@@ -202,7 +200,17 @@ class PayrollApprovalService:
             raise PayrollImportNotFoundError()
 
     @classmethod
-    def _verify_context(cls, run, snapshot) -> None:
+    def resolve_current_context(cls, repository, user, import_id):
+        cls._require_import(repository, user, import_id)
+        snapshot_id = repository.current_snapshot_id(user.organization_id, import_id)
+        if snapshot_id is None:
+            return None, None
+        return snapshot_id, repository.latest_run_for_snapshot(
+            user.organization_id, import_id, snapshot_id,
+        )
+
+    @classmethod
+    def verify_context(cls, run, snapshot) -> None:
         if run.status != PayrollValidationRunStatus.COMPLETED:
             raise PayrollApprovalValidationNotCompletedError()
         severities = Counter(result.severity for result in run.results)
