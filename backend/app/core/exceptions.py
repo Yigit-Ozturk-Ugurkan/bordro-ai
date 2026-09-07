@@ -310,3 +310,57 @@ class PayrollMaterializationIntegrityFailedError(BordroError):
     status_code = 409
     code = "MATERIALIZATION_INTEGRITY_FAILED"
     default_message = "The approved materialization evidence failed integrity verification"
+
+
+class TaxSyncNotMaterializedError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_NOT_MATERIALIZED"
+    default_message = "An authoritative payroll materialization is required for tax sync"
+
+
+class TaxSyncVersionNotCurrentError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_VERSION_NOT_CURRENT"
+    default_message = "Only the active current payroll revision can start a tax sync"
+
+
+class TaxSyncRuleSetNotFoundError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_RULESET_NOT_FOUND"
+    default_message = "No deterministic tax rule set covers the payroll period"
+
+
+class TaxSyncPriorPeriodRequiredError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_PRIOR_PERIOD_REQUIRED"
+    default_message = "An earlier authoritative payroll period must be tax-synchronized first"
+
+
+class TaxSyncDownstreamRebuildRequiredError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_DOWNSTREAM_REBUILD_REQUIRED"
+    default_message = "Later synchronized periods require an explicit downstream rebuild"
+
+
+class TaxSyncReconciliationFailedError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_RECONCILIATION_FAILED"
+    default_message = "Calculated withholding does not match the authoritative payroll"
+
+
+class TaxSyncContextStaleError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_CONTEXT_STALE"
+    default_message = "The payroll tax synchronization context is stale"
+
+
+class TaxSyncIntegrityFailedError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_INTEGRITY_FAILED"
+    default_message = "Payroll tax synchronization integrity verification failed"
+
+
+class TaxSyncStateConflictError(BordroError):
+    status_code = 409
+    code = "TAX_SYNC_STATE_CONFLICT"
+    default_message = "The payroll tax ledger conflicts with this synchronization"

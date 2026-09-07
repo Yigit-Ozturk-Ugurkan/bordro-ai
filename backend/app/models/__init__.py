@@ -11,6 +11,7 @@ from app.models.payroll_detail import (
     PayrollEarning,
 )
 from app.models.payroll_materialization import PayrollImportMaterialization
+from app.models.payroll_tax_sync import PayrollTaxLedgerSync
 from app.models.payroll_import import (
     PayrollFieldMapping,
     PayrollImport,
@@ -49,6 +50,7 @@ __all__ = [
     "PayrollImportApproval",
     "PayrollImportValidationAcknowledgement",
     "PayrollImportMaterialization",
+    "PayrollTaxLedgerSync",
     "PayrollEarning",
     "PayrollDeduction",
     "PayrollAbsence",

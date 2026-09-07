@@ -17,9 +17,9 @@ from sqlalchemy.orm import Session
 from app.models.tax import (
     PayrollParameter,
     TaxBracket,
-    TaxCalculationRun,
     TaxRuleSet,
 )
+from app.seeds import tax_2026_seed as tax_seed_module
 from app.seeds.tax_2026_seed import (
     BRACKETS,
     PARAMETERS,
@@ -29,25 +29,15 @@ from app.seeds.tax_2026_seed import (
 
 
 class TestTaxSeedIdempotency:
-    def test_seed_first_run_creates_records(self, db_session: Session) -> None:
-        # If seed was already run in the DB previously, let's delete or test with fresh/existing
-        # Note: In transactional test session, any changes made inside test are isolated/rolled back.
-        # But if rule set already existed from an out-of-test seed run, let's verify both cases:
-        stmt = select(TaxRuleSet).where(TaxRuleSet.version == RULE_SET_VERSION)
-        existing = db_session.execute(stmt).scalar_one_or_none()
-
-        if existing is not None:
-            # Delete existing seed data within the SAVEPOINT to test a
-            # clean run. TaxCalculationRun.rule_set_id is NOT NULL, so the
-            # runs must go first: leaving them would make SQLAlchemy try to
-            # null out that column and hit the constraint. Their cumulative
-            # records cascade at the database level.
-            for run in db_session.execute(select(TaxCalculationRun)).scalars().all():
-                db_session.delete(run)
-            db_session.flush()
-
-            db_session.delete(existing)
-            db_session.flush()
+    def test_seed_first_run_creates_records(
+        self, db_session: Session, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Exercise a genuine first run without deleting immutable historical
+        # tax runs/records that may reference the normal development seed.
+        isolated_version = f"TEST_TR_PAYROLL_2026_{uuid.uuid4().hex}"
+        monkeypatch.setattr(
+            tax_seed_module, "RULE_SET_VERSION", isolated_version,
+        )
 
         result1 = seed_tax_2026(db_session)
         assert result1["rule_set"] == 1
@@ -56,7 +46,7 @@ class TestTaxSeedIdempotency:
 
         # Check in DB
         rule_set = db_session.execute(
-            select(TaxRuleSet).where(TaxRuleSet.version == RULE_SET_VERSION)
+            select(TaxRuleSet).where(TaxRuleSet.version == isolated_version)
         ).scalar_one()
         assert rule_set is not None
         assert rule_set.status == "ACTIVE"

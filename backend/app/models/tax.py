@@ -374,6 +374,15 @@ class TaxCalculationRun(UUIDPrimaryKeyMixin, Base):
             "ix_tax_calc_runs_rule_set_id",
             "rule_set_id",
         ),
+        Index(
+            "ix_tax_calc_runs_payroll_version_id",
+            "payroll_version_id",
+        ),
+        UniqueConstraint(
+            "id", "organization_id", "employee_id", "tax_year",
+            "rule_set_id", "payroll_version_id",
+            name="uq_tax_calc_run_sync_scope",
+        ),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -397,6 +406,12 @@ class TaxCalculationRun(UUIDPrimaryKeyMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("tax_rule_sets.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+
+    payroll_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("payroll_versions.id", ondelete="RESTRICT"),
+        nullable=True,
     )
 
     trigger_type: Mapped[str] = mapped_column(
@@ -471,6 +486,15 @@ class TaxCumulativeRecord(UUIDPrimaryKeyMixin, Base):
             "period_month",
             name="uq_tax_cumulative_run_emp_year_month",
         ),
+        UniqueConstraint(
+            "id", "calculation_run_id", "employee_id", "payroll_version_id",
+            "tax_year", "period_month",
+            name="uq_tax_cumulative_sync_scope",
+        ),
+        UniqueConstraint(
+            "supersedes_record_id",
+            name="uq_tax_cumulative_supersedes_record",
+        ),
         CheckConstraint(
             "tax_year >= 2000",
             name="ck_tax_cumulative_tax_year_valid",
@@ -524,6 +548,12 @@ class TaxCumulativeRecord(UUIDPrimaryKeyMixin, Base):
         Index(
             "ix_tax_cumulative_payroll_version_id",
             "payroll_version_id",
+        ),
+        Index(
+            "uq_tax_cumulative_current_period",
+            "employee_id", "tax_year", "period_month",
+            unique=True,
+            postgresql_where=text("is_current = true"),
         ),
     )
 
@@ -588,6 +618,16 @@ class TaxCumulativeRecord(UUIDPrimaryKeyMixin, Base):
     effective_tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(9, 6),
         nullable=False,
+    )
+
+    is_current: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true"),
+    )
+
+    supersedes_record_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tax_cumulative_records.id", ondelete="RESTRICT"),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

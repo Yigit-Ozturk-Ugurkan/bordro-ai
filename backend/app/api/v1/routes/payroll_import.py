@@ -39,6 +39,11 @@ from app.schemas.payroll_materialization import (
     PayrollMaterializationStateRead,
     PayrollMaterializeRequest,
 )
+from app.schemas.payroll_tax_sync import (
+    PayrollTaxSyncRead,
+    PayrollTaxSyncRequest,
+    PayrollTaxSyncStateRead,
+)
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
 from app.services.imports.payroll_adapter_service import PayrollAdapterService
@@ -47,6 +52,9 @@ from app.services.imports.payroll_validation_service import PayrollValidationSer
 from app.services.imports.payroll_approval_service import PayrollApprovalService
 from app.services.imports.payroll_materialization_service import (
     PayrollMaterializationService,
+)
+from app.services.taxation.payroll_tax_sync_service import (
+    PayrollTaxLedgerSyncService,
 )
 from app.storage.document_storage import DocumentStorage
 
@@ -372,3 +380,29 @@ async def get_current_payroll_import_materialization(
     session: AsyncSession = Depends(get_db),
 ) -> PayrollMaterializationStateRead:
     return await PayrollMaterializationService(session).current(user, import_id)
+
+
+@router.post(
+    "/{import_id}/materialization/tax-sync",
+    response_model=PayrollTaxSyncRead,
+)
+async def synchronize_payroll_import_tax_ledger(
+    import_id: UUID,
+    request: PayrollTaxSyncRequest,
+    user: AuthenticatedUser = Depends(require_roles(*APPROVAL_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollTaxSyncRead:
+    del request
+    return await PayrollTaxLedgerSyncService(session).sync(user, import_id)
+
+
+@router.get(
+    "/{import_id}/materialization/tax-sync",
+    response_model=PayrollTaxSyncStateRead,
+)
+async def get_payroll_import_tax_ledger_sync(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollTaxSyncStateRead:
+    return await PayrollTaxLedgerSyncService(session).current(user, import_id)

@@ -458,9 +458,8 @@ def _ensure_cumulative_record(
     Create the month's tax ledger entry if it is not already present.
 
     Tax figures are produced through CumulativeTaxService and TaxEngine from
-    the seeded brackets. Existing legacy demo records have only their derived
-    monthly withholding/rate reconciled; their calculation run and cumulative
-    bases remain unchanged.
+    the seeded brackets. Existing records are verified, never repaired in
+    place, because tax-ledger values are immutable once created.
     """
     month = period["month"]
 
@@ -469,6 +468,7 @@ def _ensure_cumulative_record(
             TaxCumulativeRecord.employee_id == employee.id,
             TaxCumulativeRecord.tax_year == DEMO_TAX_YEAR,
             TaxCumulativeRecord.period_month == month,
+            TaxCumulativeRecord.is_current.is_(True),
         )
     ).scalar_one_or_none()
     engine = TaxEngine(db, TaxService(db))
@@ -494,6 +494,7 @@ def _ensure_cumulative_record(
             TaxCumulativeRecord.employee_id == employee.id,
             TaxCumulativeRecord.tax_year == DEMO_TAX_YEAR,
             TaxCumulativeRecord.period_month < month,
+            TaxCumulativeRecord.is_current.is_(True),
         )
         .order_by(TaxCumulativeRecord.period_month.desc())
         .limit(1)
@@ -506,11 +507,14 @@ def _ensure_cumulative_record(
         previous_gross_tax,
         existing.tax_exemptions,
     )
-    existing.withholding_tax = expected_withholding
-    existing.effective_tax_rate = cumulative_service.calculate_effective_tax_rate(
+    expected_rate = cumulative_service.calculate_effective_tax_rate(
         expected_withholding, existing.monthly_taxable_base
     )
-    db.flush()
+    if (existing.withholding_tax != expected_withholding
+            or existing.effective_tax_rate != expected_rate):
+        raise RuntimeError(
+            "Existing demo tax ledger conflicts with deterministic calculation"
+        )
     return existing
 
 

@@ -16,6 +16,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
@@ -252,38 +253,25 @@ class TestDemoSeedIdempotency:
         assert result["brackets"] == 0
         assert result["parameters"] == 0
 
-    def test_rerun_repairs_legacy_illustrative_tax_without_duplicates(
+    def test_tax_ledger_rejects_legacy_in_place_repair(
         self, seeded: Session
     ) -> None:
-        """Old 5,000/5,500 demo tax values converge to the existing ledger."""
+        """Legacy tax values cannot be simulated by mutating tax history."""
         before = _counts(seeded)
-        legacy_values = {
-            1: (Decimal("5000.00"), Decimal("15600.00"), Decimal("84400.00")),
-            2: (Decimal("5500.00"), Decimal("17160.00"), Decimal("92840.00")),
-        }
-        for month, (income_tax, deductions, net_pay) in legacy_values.items():
-            version = TestDemoSeedDataIntegrity._version_for(seeded, month)
-            version.income_tax = income_tax
-            version.total_deductions = deductions
-            version.net_pay = net_pay
-            next(
-                row for row in version.deductions if row.code == "INCOME_TAX"
-            ).amount = income_tax
-
-        records = seeded.execute(select(TaxCumulativeRecord)).scalars().all()
-        for record in records:
-            record.withholding_tax = record.gross_calculated_tax
-        seeded.flush()
+        financial_before = _financial_snapshot(seeded)
+        record = seeded.execute(select(TaxCumulativeRecord).limit(1)).scalar_one()
+        nested = seeded.begin_nested()
+        record.withholding_tax = record.gross_calculated_tax
+        with pytest.raises(
+            DBAPIError, match="synchronized tax cumulative evidence is immutable",
+        ):
+            seeded.flush()
+        nested.rollback()
 
         seed_demo_payroll(seeded)
 
         assert _counts(seeded) == before
-        TestDemoSeedDataIntegrity._assert_monthly_withholding(
-            seeded, 1, Decimal("15000.00")
-        )
-        TestDemoSeedDataIntegrity._assert_monthly_withholding(
-            seeded, 2, Decimal("17500.00")
-        )
+        assert _financial_snapshot(seeded) == financial_before
 
 
 class TestDemoSeedDataIntegrity:

@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
@@ -781,7 +781,7 @@ class TestTaxCumulativeRecordModel:
         with pytest.raises(IntegrityError, match="uq_tax_cumulative_run_emp_year_month"):
             db_session.flush()
 
-    def test_cascade_delete_from_calc_run(
+    def test_tax_calculation_run_delete_is_rejected_as_immutable(
         self,
         db_session: Session,
         sample_organization: Organization,
@@ -805,11 +805,18 @@ class TestTaxCumulativeRecordModel:
         db_session.add(record)
         db_session.flush()
 
-        record_id = record.id
-        db_session.delete(run)
-        db_session.flush()
-
-        assert db_session.get(TaxCumulativeRecord, record_id) is None
+        nested = db_session.begin_nested()
+        with pytest.raises(
+            DBAPIError, match="synchronized tax calculation evidence is immutable",
+        ):
+            db_session.execute(
+                text("DELETE FROM tax_calculation_runs WHERE id = :id"),
+                {"id": run.id},
+            )
+            db_session.flush()
+        nested.rollback()
+        assert db_session.get(TaxCalculationRun, run.id) is not None
+        assert db_session.get(TaxCumulativeRecord, record.id) is not None
 
 
 # ===================================================================

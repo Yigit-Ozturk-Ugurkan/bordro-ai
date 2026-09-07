@@ -99,6 +99,7 @@ class CumulativeTaxService:
             .where(
                 TaxCumulativeRecord.employee_id == employee_id,
                 TaxCumulativeRecord.tax_year == tax_year,
+                TaxCumulativeRecord.is_current.is_(True),
             )
             .order_by(TaxCumulativeRecord.period_month.desc())
             .limit(1)
@@ -276,6 +277,7 @@ class CumulativeTaxService:
                 TaxCumulativeRecord.employee_id == employee_id,
                 TaxCumulativeRecord.tax_year == tax_year,
                 TaxCumulativeRecord.period_month < period_month,
+                TaxCumulativeRecord.is_current.is_(True),
             )
             .order_by(TaxCumulativeRecord.period_month.desc())
             .limit(1)
@@ -377,6 +379,7 @@ class CumulativeTaxService:
             .where(
                 TaxCumulativeRecord.employee_id == employee_id,
                 TaxCumulativeRecord.tax_year == tax_year,
+                TaxCumulativeRecord.is_current.is_(True),
             )
             .order_by(TaxCumulativeRecord.period_month)
         )

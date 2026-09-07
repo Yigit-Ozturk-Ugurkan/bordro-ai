@@ -215,21 +215,19 @@ class TaxStatusService:
         Fetch the ledger entry that defines the reported position.
 
         With a month given, that exact month is used. Without one, the
-        latest recorded month in the year is used. Records are append-only,
-        so the newest row for a month (by created_at) is the live one.
+        latest current recorded month in the year is used. Explicit
+        ``is_current`` state selects revision-safe business truth.
         """
         stmt = select(TaxCumulativeRecord).where(
             TaxCumulativeRecord.employee_id == employee_id,
             TaxCumulativeRecord.tax_year == tax_year,
+            TaxCumulativeRecord.is_current.is_(True),
         )
 
         if period_month is not None:
             stmt = stmt.where(TaxCumulativeRecord.period_month == period_month)
 
-        stmt = stmt.order_by(
-            desc(TaxCumulativeRecord.period_month),
-            desc(TaxCumulativeRecord.created_at),
-        ).limit(1)
+        stmt = stmt.order_by(desc(TaxCumulativeRecord.period_month)).limit(1)
 
         return self._session.execute(stmt).scalars().first()
 
