@@ -55,8 +55,6 @@ class PayrollTaxLedgerSync(UUIDPrimaryKeyMixin, Base):
              "tax_cumulative_records.period_month"],
             name="fk_tax_sync_cumulative_scope", ondelete="RESTRICT",
         ),
-        UniqueConstraint("materialization_id", name="uq_tax_sync_materialization"),
-        UniqueConstraint("payroll_version_id", name="uq_tax_sync_payroll_version"),
         UniqueConstraint("tax_calculation_run_id", name="uq_tax_sync_calculation_run"),
         UniqueConstraint(
             "tax_cumulative_record_id", name="uq_tax_sync_cumulative_record",
@@ -84,6 +82,8 @@ class PayrollTaxLedgerSync(UUIDPrimaryKeyMixin, Base):
         Index(
             "ix_tax_sync_org_import", "organization_id", "payroll_import_id",
         ),
+        Index("ix_tax_sync_materialization", "materialization_id"),
+        Index("ix_tax_sync_payroll_version", "payroll_version_id"),
         Index(
             "ix_tax_sync_employee_year_period",
             "organization_id", "employee_id", "tax_year", "period_month",

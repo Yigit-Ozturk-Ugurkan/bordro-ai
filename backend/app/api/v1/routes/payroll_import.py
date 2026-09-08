@@ -44,6 +44,12 @@ from app.schemas.payroll_tax_sync import (
     PayrollTaxSyncRequest,
     PayrollTaxSyncStateRead,
 )
+from app.schemas.payroll_tax_rebuild import (
+    PayrollTaxRebuildCreateRequest,
+    PayrollTaxRebuildExecuteRequest,
+    PayrollTaxRebuildList,
+    PayrollTaxRebuildRead,
+)
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
 from app.services.imports.payroll_adapter_service import PayrollAdapterService
@@ -55,6 +61,9 @@ from app.services.imports.payroll_materialization_service import (
 )
 from app.services.taxation.payroll_tax_sync_service import (
     PayrollTaxLedgerSyncService,
+)
+from app.services.taxation.payroll_tax_rebuild_service import (
+    PayrollTaxLedgerRebuildService,
 )
 from app.storage.document_storage import DocumentStorage
 
@@ -406,3 +415,62 @@ async def get_payroll_import_tax_ledger_sync(
     session: AsyncSession = Depends(get_db),
 ) -> PayrollTaxSyncStateRead:
     return await PayrollTaxLedgerSyncService(session).current(user, import_id)
+
+
+@router.post(
+    "/{import_id}/materialization/tax-rebuilds",
+    response_model=PayrollTaxRebuildRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_payroll_tax_ledger_rebuild(
+    import_id: UUID,
+    request: PayrollTaxRebuildCreateRequest,
+    user: AuthenticatedUser = Depends(require_roles(*APPROVAL_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollTaxRebuildRead:
+    del request
+    return await PayrollTaxLedgerRebuildService(session).create(user, import_id)
+
+
+@router.get(
+    "/{import_id}/materialization/tax-rebuilds",
+    response_model=PayrollTaxRebuildList,
+)
+async def list_payroll_tax_ledger_rebuilds(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollTaxRebuildList:
+    return await PayrollTaxLedgerRebuildService(session).list(user, import_id)
+
+
+@router.get(
+    "/{import_id}/materialization/tax-rebuilds/{rebuild_id}",
+    response_model=PayrollTaxRebuildRead,
+)
+async def get_payroll_tax_ledger_rebuild(
+    import_id: UUID,
+    rebuild_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollTaxRebuildRead:
+    return await PayrollTaxLedgerRebuildService(session).get(
+        user, import_id, rebuild_id,
+    )
+
+
+@router.post(
+    "/{import_id}/materialization/tax-rebuilds/{rebuild_id}/execute",
+    response_model=PayrollTaxRebuildRead,
+)
+async def execute_payroll_tax_ledger_rebuild(
+    import_id: UUID,
+    rebuild_id: UUID,
+    request: PayrollTaxRebuildExecuteRequest,
+    user: AuthenticatedUser = Depends(require_roles(*APPROVAL_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollTaxRebuildRead:
+    del request
+    return await PayrollTaxLedgerRebuildService(session).execute(
+        user, import_id, rebuild_id,
+    )

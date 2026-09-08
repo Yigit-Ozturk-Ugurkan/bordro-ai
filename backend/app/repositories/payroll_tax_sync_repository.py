@@ -74,7 +74,10 @@ class PayrollTaxSyncRepository:
         return self._session.execute(select(PayrollTaxLedgerSync).where(
             PayrollTaxLedgerSync.organization_id == organization_id,
             PayrollTaxLedgerSync.payroll_version_id == version_id,
-        )).scalar_one_or_none()
+        ).order_by(
+            PayrollTaxLedgerSync.is_current.desc(),
+            PayrollTaxLedgerSync.created_at.desc(),
+        ).limit(1)).scalar_one_or_none()
 
     def for_import(
         self, organization_id: UUID, import_id: UUID,

@@ -364,3 +364,62 @@ class TaxSyncStateConflictError(BordroError):
     status_code = 409
     code = "TAX_SYNC_STATE_CONFLICT"
     default_message = "The payroll tax ledger conflicts with this synchronization"
+
+
+class TaxRebuildNotFoundError(NotFoundError):
+    code = "TAX_REBUILD_NOT_FOUND"
+    default_message = "Tax rebuild plan not found"
+
+
+class TaxRebuildNotRequiredError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_NOT_REQUIRED"
+    default_message = "No downstream cumulative-tax rebuild is required"
+
+
+class TaxRebuildPlanStaleError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_PLAN_STALE"
+    default_message = "The persisted tax rebuild plan no longer matches authoritative state"
+
+
+class TaxRebuildAlreadyCompletedError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_ALREADY_COMPLETED"
+    default_message = "The tax rebuild plan is already completed"
+
+
+class TaxRebuildAlreadyRunningError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_ALREADY_RUNNING"
+    default_message = "The tax rebuild plan is already running"
+
+
+class TaxRebuildPriorContextRequiredError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_PRIOR_CONTEXT_REQUIRED"
+    default_message = "The rebuild requires an exact current prior-period tax context"
+
+
+class TaxRebuildReconciliationFailedError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_RECONCILIATION_FAILED"
+    default_message = "A rebuilt period does not reconcile with authoritative payroll"
+
+
+class TaxRebuildRuleSetNotFoundError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_RULESET_NOT_FOUND"
+    default_message = "No deterministic tax rule set covers a rebuilt period"
+
+
+class TaxRebuildStateConflictError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_STATE_CONFLICT"
+    default_message = "The tax rebuild state conflicts with this operation"
+
+
+class TaxRebuildIntegrityFailedError(BordroError):
+    status_code = 409
+    code = "TAX_REBUILD_INTEGRITY_FAILED"
+    default_message = "Tax rebuild evidence failed integrity verification"
