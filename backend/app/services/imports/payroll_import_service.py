@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -19,14 +21,18 @@ from app.core.exceptions import (
     GeneralReaderContractInvalidError,
     ImportProcessingFailedError,
     PayrollImportNotFoundError,
+    PayrollImportTableNotFoundError,
 )
 from app.integrations.general_reader.client import GeneralReaderClient
-from app.integrations.general_reader.schemas import ExtractionResultV1, FieldV1
+from app.integrations.general_reader.schemas import ExtractionResultV1, FieldV1, TableV1
 from app.models.enums import PayrollImportFieldReviewStatus, PayrollImportStatus
 from app.models.payroll_import import (
     PayrollImport,
     PayrollImportDocument,
     PayrollImportField,
+    PayrollImportTable,
+    PayrollImportTableCell,
+    PayrollImportTableRow,
 )
 from app.repositories.payroll_import_repository import PayrollImportRepository
 from app.schemas.payroll_import import (
@@ -35,6 +41,8 @@ from app.schemas.payroll_import import (
     PayrollImportList,
     PayrollImportListItem,
     PayrollImportRead,
+    PayrollImportTableList,
+    PayrollImportTableRead,
 )
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.state_machine import transition
@@ -218,6 +226,28 @@ class PayrollImportService:
             return PayrollImportFieldList(import_id=import_id, count=len(rows), items=rows)
         return await self._session.run_sync(work)
 
+    async def tables(self, user: AuthenticatedUser,
+                     import_id: UUID) -> PayrollImportTableList:
+        def work(sync_session: Session) -> PayrollImportTableList:
+            repository = PayrollImportRepository(sync_session)
+            if repository.get(user.organization_id, import_id) is None:
+                raise PayrollImportNotFoundError()
+            rows = repository.list_tables(user.organization_id, import_id)
+            return PayrollImportTableList(import_id=import_id, count=len(rows), items=rows)
+        return await self._session.run_sync(work)
+
+    async def table(self, user: AuthenticatedUser, import_id: UUID,
+                    table_id: UUID) -> PayrollImportTableRead:
+        def work(sync_session: Session) -> PayrollImportTableRead:
+            repository = PayrollImportRepository(sync_session)
+            if repository.get(user.organization_id, import_id) is None:
+                raise PayrollImportNotFoundError()
+            row = repository.get_table(user.organization_id, import_id, table_id)
+            if row is None:
+                raise PayrollImportTableNotFoundError()
+            return PayrollImportTableRead.model_validate(row)
+        return await self._session.run_sync(work)
+
     async def _persist_extraction(self, organization_id: UUID, import_id: UUID,
                                   result: ExtractionResultV1) -> PayrollImportRead:
         def work(sync_session: Session) -> PayrollImportRead:
@@ -237,10 +267,6 @@ class PayrollImportService:
             item.extraction_schema_version = result.schema_version
             item.reader_table_count = len(result.tables)
             item.reader_warnings = [warning.model_dump(mode="json") for warning in result.warnings]
-            if result.tables:
-                item.reader_warnings.append({
-                    "code": "TABLE_STAGING_DEFERRED", "count": len(result.tables)
-                })
             template = max(
                 result.templates,
                 key=lambda candidate: candidate.match_score
@@ -303,7 +329,11 @@ class PayrollImportService:
                     missing_reason=source.safe_reason_text,
                     review_status=PayrollImportFieldReviewStatus.MISSING,
                 ))
+            tables = self._build_tables(
+                organization_id, import_id, document.id, result,
+            )
             repository.replace_fields(import_id, rows)
+            repository.replace_tables(organization_id, import_id, tables)
             requires_review = (
                 any(row.review_status != PayrollImportFieldReviewStatus.UNREVIEWED
                     for row in rows)
@@ -318,6 +348,178 @@ class PayrollImportService:
             sync_session.flush()
             return self._detail(item, document)
         return await self._session.run_sync(work)
+
+    def _build_tables(
+        self,
+        organization_id: UUID,
+        import_id: UUID,
+        document_id: UUID,
+        result: ExtractionResultV1,
+    ) -> list[PayrollImportTable]:
+        if len(result.tables) > self._settings.payroll_import_max_tables:
+            raise GeneralReaderContractInvalidError()
+        valid_pages = {page.page_number for page in result.pages}
+        tables: list[PayrollImportTable] = []
+        for table_index, source in enumerate(result.tables):
+            if (
+                len(source.rows) > self._settings.payroll_import_max_rows_per_table
+                or len(source.columns) > self._settings.payroll_import_max_columns_per_table
+                or sum(len(row.cells) for row in source.rows)
+                > self._settings.payroll_import_max_cells_per_table
+            ):
+                raise GeneralReaderContractInvalidError()
+            if (
+                len(source.table_id) > 200
+                or len(source.source_label) > 500
+                or len(source.page_numbers) != len(set(source.page_numbers))
+                or any(page not in valid_pages for page in source.page_numbers)
+            ):
+                raise GeneralReaderContractInvalidError()
+
+            column_positions: dict[str, int] = {}
+            source_columns: list[dict[str, object]] = []
+            for column_index, column in enumerate(source.columns):
+                if (
+                    column.column_id in column_positions
+                    or len(column.column_id) > 200
+                    or len(column.source_label) > 500
+                    or len(column.value_type) > 50
+                ):
+                    raise GeneralReaderContractInvalidError()
+                column_positions[column.column_id] = column_index
+                source_columns.append({
+                    "column_index": column_index,
+                    "source_column_id": column.column_id,
+                    "source_label": column.source_label,
+                    "value_type": column.value_type,
+                })
+
+            table = PayrollImportTable(
+                organization_id=organization_id,
+                payroll_import_id=import_id,
+                payroll_import_document_id=document_id,
+                source_table_index=table_index,
+                source_table_id=source.table_id,
+                source_label=source.source_label,
+                page_numbers=list(source.page_numbers),
+                source_columns=source_columns,
+                warnings=list(source.warnings),
+                row_count=len(source.rows),
+                column_count=len(source.columns),
+            )
+            seen_rows: set[int] = set()
+            for source_row in source.rows:
+                if (
+                    source_row.row_index in seen_rows
+                    or source_row.page_number not in valid_pages
+                    or source_row.page_number not in source.page_numbers
+                    or len(source_row.coordinate_space) > 50
+                    or len(source_row.extraction_source) > 50
+                ):
+                    raise GeneralReaderContractInvalidError()
+                seen_rows.add(source_row.row_index)
+                row = PayrollImportTableRow(
+                    organization_id=organization_id,
+                    row_index=source_row.row_index,
+                    page_number=source_row.page_number,
+                    bbox=self._bbox(source_row.bbox),
+                    coordinate_space=source_row.coordinate_space,
+                    extraction_source=source_row.extraction_source,
+                )
+                table.rows.append(row)
+                seen_columns: set[str] = set()
+                for source_cell in source_row.cells:
+                    column_index = column_positions.get(source_cell.column_id)
+                    if (
+                        column_index is None
+                        or source_cell.column_id in seen_columns
+                        or len(source_cell.source_label) > 500
+                        or len(source_cell.value_type) > 50
+                        or len(source_cell.coordinate_space) > 50
+                        or len(source_cell.extraction_source) > 50
+                        or (
+                            source_cell.raw_value is not None
+                            and len(source_cell.raw_value)
+                            > self._settings.payroll_import_max_cell_value_chars
+                        )
+                    ):
+                        raise GeneralReaderContractInvalidError()
+                    seen_columns.add(source_cell.column_id)
+                    row.cells.append(PayrollImportTableCell(
+                        organization_id=organization_id,
+                        column_index=column_index,
+                        source_column_id=source_cell.column_id,
+                        column_label=source_cell.source_label,
+                        raw_value=source_cell.raw_value,
+                        value_type=source_cell.value_type,
+                        confidence=source_cell.confidence,
+                        bbox=self._bbox(source_cell.bbox),
+                        coordinate_space=source_cell.coordinate_space,
+                        extraction_source=source_cell.extraction_source,
+                    ))
+            table.source_checksum = self._table_checksum(table_index, source)
+            tables.append(table)
+        return tables
+
+    @staticmethod
+    def _bbox(value: list[Decimal] | None) -> list[str] | None:
+        return [str(part) for part in value] if value is not None else None
+
+    @classmethod
+    def _table_checksum(cls, table_index: int, source: TableV1) -> str:
+        column_positions = {
+            column.column_id: index for index, column in enumerate(source.columns)
+        }
+        payload = {
+            "source_table_index": table_index,
+            "source_table_id": source.table_id,
+            "source_label": source.source_label,
+            "page_numbers": source.page_numbers,
+            "columns": [
+                {
+                    "column_index": index,
+                    "source_column_id": column.column_id,
+                    "source_label": column.source_label,
+                    "value_type": column.value_type,
+                }
+                for index, column in enumerate(source.columns)
+            ],
+            "warnings": source.warnings,
+            "rows": [
+                {
+                    "row_index": row.row_index,
+                    "page_number": row.page_number,
+                    "bbox": cls._bbox(row.bbox),
+                    "coordinate_space": row.coordinate_space,
+                    "extraction_source": row.extraction_source,
+                    "cells": [
+                        {
+                            "column_index": column_positions[cell.column_id],
+                            "source_column_id": cell.column_id,
+                            "column_label": cell.source_label,
+                            "raw_value": cell.raw_value,
+                            "value_type": cell.value_type,
+                            "confidence": (
+                                str(cell.confidence)
+                                if cell.confidence is not None else None
+                            ),
+                            "bbox": cls._bbox(cell.bbox),
+                            "coordinate_space": cell.coordinate_space,
+                            "extraction_source": cell.extraction_source,
+                        }
+                        for cell in sorted(
+                            row.cells,
+                            key=lambda value: column_positions[value.column_id],
+                        )
+                    ],
+                }
+                for row in sorted(source.rows, key=lambda value: value.row_index)
+            ],
+        }
+        canonical = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(canonical).hexdigest()
 
     async def _mark_failed(self, organization_id: UUID, import_id: UUID,
                            error: BordroError) -> None:

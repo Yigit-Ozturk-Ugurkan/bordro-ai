@@ -23,6 +23,9 @@ from app.models.payroll_import import (
     PayrollImportField,
     PayrollImportMappedField,
     PayrollImportMappingIssue,
+    PayrollImportTable,
+    PayrollImportTableCell,
+    PayrollImportTableRow,
 )
 from app.models.refresh_session import RefreshSession
 from app.models.payroll_review import (
@@ -66,6 +69,9 @@ __all__ = [
     "PayrollFieldMapping",
     "PayrollImportMappedField",
     "PayrollImportMappingIssue",
+    "PayrollImportTable",
+    "PayrollImportTableRow",
+    "PayrollImportTableCell",
     "PayrollImportReview",
     "PayrollImportFieldCorrection",
     "PayrollImportReviewSnapshot",

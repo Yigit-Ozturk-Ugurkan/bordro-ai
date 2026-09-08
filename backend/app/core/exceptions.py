@@ -101,6 +101,11 @@ class PayrollImportNotFoundError(NotFoundError):
     default_message = "Payroll import not found"
 
 
+class PayrollImportTableNotFoundError(NotFoundError):
+    code = "IMPORT_TABLE_NOT_FOUND"
+    default_message = "Payroll import table not found"
+
+
 class PayrollImportStateConflictError(BordroError):
     status_code = 409
     code = "IMPORT_STATE_CONFLICT"

@@ -105,6 +105,55 @@ class PayrollImportFieldList(ImportModel):
     items: list[PayrollImportFieldRead]
 
 
+class PayrollImportTableSummaryRead(ImportModel):
+    id: UUID
+    source_table_index: int
+    source_table_id: str
+    source_label: str
+    page_numbers: list[int]
+    row_count: int
+    column_count: int
+    source_checksum: str
+    created_at: datetime
+
+
+class PayrollImportTableList(ImportModel):
+    import_id: UUID
+    count: int
+    items: list[PayrollImportTableSummaryRead]
+
+
+class PayrollImportTableCellRead(ImportModel):
+    id: UUID
+    column_index: int
+    source_column_id: str
+    column_label: str
+    raw_value: str | None
+    value_type: str
+    confidence: Decimal | None
+    bbox: list | None
+    coordinate_space: str
+    extraction_source: str
+    created_at: datetime
+
+
+class PayrollImportTableRowRead(ImportModel):
+    id: UUID
+    row_index: int
+    page_number: int
+    bbox: list | None
+    coordinate_space: str
+    extraction_source: str
+    created_at: datetime
+    cells: list[PayrollImportTableCellRead]
+
+
+class PayrollImportTableRead(PayrollImportTableSummaryRead):
+    source_columns: list[dict]
+    warnings: list[str]
+    rows: list[PayrollImportTableRowRead]
+
+
 class PayrollImportTypedValue(ImportModel):
     type: PayrollCanonicalValueType
     value: str | int

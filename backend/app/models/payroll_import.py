@@ -121,6 +121,10 @@ class PayrollImport(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         "PayrollImportField", back_populates="payroll_import",
         cascade="all, delete-orphan", overlaps="document,fields",
     )
+    tables = relationship(
+        "PayrollImportTable", back_populates="payroll_import",
+        cascade="all, delete-orphan", overlaps="document,tables",
+    )
     mapped_fields = relationship(
         "PayrollImportMappedField", back_populates="payroll_import",
         cascade="all, delete-orphan", overlaps="mapped_result,source_field",
@@ -173,6 +177,152 @@ class PayrollImportDocument(UUIDPrimaryKeyMixin, Base):
         "PayrollImportField", back_populates="document",
         cascade="all, delete-orphan", overlaps="fields,payroll_import",
     )
+    tables = relationship(
+        "PayrollImportTable", back_populates="document",
+        cascade="all, delete-orphan", overlaps="payroll_import,tables",
+    )
+
+
+class PayrollImportTable(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "payroll_import_tables"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["payroll_import_id", "organization_id"],
+            ["payroll_imports.id", "payroll_imports.organization_id"],
+            ondelete="CASCADE", name="fk_import_table_import_org",
+        ),
+        ForeignKeyConstraint(
+            ["payroll_import_document_id", "payroll_import_id", "organization_id"],
+            ["payroll_import_documents.id", "payroll_import_documents.payroll_import_id",
+             "payroll_import_documents.organization_id"],
+            ondelete="CASCADE", name="fk_import_table_document_scope",
+        ),
+        UniqueConstraint(
+            "payroll_import_document_id", "source_table_index",
+            name="uq_payroll_import_table_source_position",
+        ),
+        UniqueConstraint(
+            "id", "organization_id", name="uq_payroll_import_table_id_org",
+        ),
+        Index(
+            "ix_payroll_import_table_org_import",
+            "organization_id", "payroll_import_id", "source_table_index",
+        ),
+        CheckConstraint(
+            "source_table_index >= 0", name="ck_payroll_import_table_source_index",
+        ),
+        CheckConstraint("row_count >= 0", name="ck_payroll_import_table_row_count"),
+        CheckConstraint(
+            "column_count >= 0", name="ck_payroll_import_table_column_count",
+        ),
+        CheckConstraint(
+            "length(source_checksum) = 64", name="ck_payroll_import_table_checksum",
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    payroll_import_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    payroll_import_document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
+    source_table_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_table_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    page_numbers: Mapped[list] = mapped_column(JSONB, nullable=False)
+    source_columns: Mapped[list] = mapped_column(JSONB, nullable=False)
+    warnings: Mapped[list] = mapped_column(JSONB, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    column_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    payroll_import = relationship(
+        "PayrollImport", back_populates="tables", overlaps="document,tables"
+    )
+    document = relationship(
+        "PayrollImportDocument", back_populates="tables",
+        overlaps="payroll_import,tables",
+    )
+    rows = relationship(
+        "PayrollImportTableRow", back_populates="table",
+        cascade="all, delete-orphan", order_by="PayrollImportTableRow.row_index",
+    )
+
+
+class PayrollImportTableRow(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "payroll_import_table_rows"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["table_id", "organization_id"],
+            ["payroll_import_tables.id", "payroll_import_tables.organization_id"],
+            ondelete="CASCADE", name="fk_import_table_row_table_org",
+        ),
+        UniqueConstraint(
+            "table_id", "row_index", name="uq_payroll_import_table_row_position",
+        ),
+        UniqueConstraint(
+            "id", "organization_id", name="uq_payroll_import_table_row_id_org",
+        ),
+        CheckConstraint("row_index >= 0", name="ck_payroll_import_table_row_index"),
+        CheckConstraint("page_number >= 1", name="ck_payroll_import_table_row_page"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    table_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    bbox: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    coordinate_space: Mapped[str] = mapped_column(String(50), nullable=False)
+    extraction_source: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    table = relationship("PayrollImportTable", back_populates="rows")
+    cells = relationship(
+        "PayrollImportTableCell", back_populates="row",
+        cascade="all, delete-orphan", order_by="PayrollImportTableCell.column_index",
+    )
+
+
+class PayrollImportTableCell(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "payroll_import_table_cells"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["row_id", "organization_id"],
+            ["payroll_import_table_rows.id", "payroll_import_table_rows.organization_id"],
+            ondelete="CASCADE", name="fk_import_table_cell_row_org",
+        ),
+        UniqueConstraint(
+            "row_id", "column_index", name="uq_payroll_import_table_cell_position",
+        ),
+        CheckConstraint(
+            "column_index >= 0", name="ck_payroll_import_table_cell_column_index",
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_payroll_import_table_cell_confidence",
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    row_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    column_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_column_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    column_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    raw_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(10, 8), nullable=True)
+    bbox: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    coordinate_space: Mapped[str] = mapped_column(String(50), nullable=False)
+    extraction_source: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    row = relationship("PayrollImportTableRow", back_populates="cells")
 
 
 class PayrollImportField(UUIDPrimaryKeyMixin, TimestampMixin, Base):

@@ -176,7 +176,10 @@ async def test_timeout_is_safely_mapped():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mutation", ["schema", "extra", "tenant", "hash", "request", "correlation"]
+    "mutation", [
+        "schema", "extra", "tenant", "hash", "request", "correlation",
+        "negative_table_row", "malformed_cell_bbox", "invalid_cell_confidence",
+    ]
 )
 async def test_invalid_or_mismatched_response_is_rejected(mutation: str):
     payload = fixture_payload()
@@ -190,8 +193,14 @@ async def test_invalid_or_mismatched_response_is_rejected(mutation: str):
         payload["document"]["sha256"] = "1" * 64
     elif mutation == "request":
         payload["request_id"] = "different"
-    else:
+    elif mutation == "correlation":
         payload["correlation_id"] = "different"
+    elif mutation == "negative_table_row":
+        payload["tables"][0]["rows"][0]["row_index"] = -1
+    elif mutation == "malformed_cell_bbox":
+        payload["tables"][0]["rows"][0]["cells"][0]["bbox"] = [0.1, 0.2]
+    else:
+        payload["tables"][0]["rows"][0]["cells"][0]["confidence"] = 1.1
 
     client = GeneralReaderClient(
         settings(), transport=httpx.MockTransport(

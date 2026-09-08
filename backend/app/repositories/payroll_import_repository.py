@@ -11,6 +11,8 @@ from app.models.payroll_import import (
     PayrollImport,
     PayrollImportDocument,
     PayrollImportField,
+    PayrollImportTable,
+    PayrollImportTableRow,
 )
 
 
@@ -80,6 +82,41 @@ class PayrollImportRepository:
         ))
         self._session.add_all(fields)
         self._session.flush()
+
+    def replace_tables(self, organization_id: UUID, import_id: UUID,
+                       tables: list[PayrollImportTable]) -> None:
+        self._session.execute(delete(PayrollImportTable).where(
+            PayrollImportTable.organization_id == organization_id,
+            PayrollImportTable.payroll_import_id == import_id,
+        ))
+        self._session.add_all(tables)
+        self._session.flush()
+
+    def list_tables(self, organization_id: UUID,
+                    import_id: UUID) -> list[PayrollImportTable]:
+        return list(self._session.execute(
+            select(PayrollImportTable)
+            .where(
+                PayrollImportTable.organization_id == organization_id,
+                PayrollImportTable.payroll_import_id == import_id,
+            )
+            .order_by(PayrollImportTable.source_table_index)
+        ).scalars().all())
+
+    def get_table(self, organization_id: UUID, import_id: UUID,
+                  table_id: UUID) -> PayrollImportTable | None:
+        return self._session.execute(
+            select(PayrollImportTable)
+            .where(
+                PayrollImportTable.id == table_id,
+                PayrollImportTable.organization_id == organization_id,
+                PayrollImportTable.payroll_import_id == import_id,
+            )
+            .options(
+                selectinload(PayrollImportTable.rows)
+                .selectinload(PayrollImportTableRow.cells)
+            )
+        ).scalar_one_or_none()
 
 
 __all__ = ["PayrollImportRepository"]

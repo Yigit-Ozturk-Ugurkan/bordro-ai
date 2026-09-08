@@ -17,6 +17,8 @@ from app.schemas.payroll_import import (
     PayrollImportMappingSummary,
     PayrollImportList,
     PayrollImportRead,
+    PayrollImportTableList,
+    PayrollImportTableRead,
     PayrollReviewCorrectionRequest,
     PayrollReviewFinalizeRequest,
     PayrollReviewRevertRequest,
@@ -131,6 +133,31 @@ async def get_payroll_import_fields(
     reader: GeneralReaderClient = Depends(get_general_reader_client),
 ) -> PayrollImportFieldList:
     return await service(session, storage, reader).fields(user, import_id)
+
+
+@router.get("/{import_id}/tables", response_model=PayrollImportTableList)
+async def get_payroll_import_tables(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+    storage: DocumentStorage = Depends(get_document_storage),
+    reader: GeneralReaderClient = Depends(get_general_reader_client),
+) -> PayrollImportTableList:
+    return await service(session, storage, reader).tables(user, import_id)
+
+
+@router.get(
+    "/{import_id}/tables/{table_id}", response_model=PayrollImportTableRead,
+)
+async def get_payroll_import_table(
+    import_id: UUID,
+    table_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+    storage: DocumentStorage = Depends(get_document_storage),
+    reader: GeneralReaderClient = Depends(get_general_reader_client),
+) -> PayrollImportTableRead:
+    return await service(session, storage, reader).table(user, import_id, table_id)
 
 
 @router.post("/{import_id}/process", response_model=PayrollImportRead)

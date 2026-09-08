@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ settings = get_settings()
 class FakeReader:
     def __init__(self) -> None:
         self.calls = []
+        self.include_tables = False
 
     async def extract(self, document, **kwargs):
         self.calls.append(kwargs)
@@ -37,7 +39,44 @@ class FakeReader:
         payload["document"]["sha256"] = kwargs["content_sha256"]
         payload["fields"] = payload["fields"][:1]
         payload["missing_fields"] = []
-        payload["tables"] = []
+        if self.include_tables:
+            payload["tables"][0]["columns"].append({
+                "column_id": "c2", "source_label": "Amount", "value_type": "text",
+            })
+            payload["tables"][0]["rows"][0]["cells"][0].update({
+                "confidence": 0.87,
+                "bbox": [0.1, 0.2, 0.3, 0.4],
+            })
+            payload["tables"][0]["rows"].append({
+                "row_index": 1,
+                "page_number": 1,
+                "bbox": [0.2, 0.3, 0.8, 0.4],
+                "coordinate_space": "normalized_xyxy",
+                "extraction_source": "rule",
+                "cells": [{
+                    "column_id": "c1",
+                    "source_label": "Column",
+                    "raw_value": None,
+                    "normalized_value": None,
+                    "value_type": "text",
+                    "confidence": None,
+                    "bbox": None,
+                    "coordinate_space": "normalized_xyxy",
+                    "extraction_source": "rule",
+                }, {
+                    "column_id": "c2",
+                    "source_label": "Amount",
+                    "raw_value": "14.000,00-",
+                    "normalized_value": "-14000.00",
+                    "value_type": "text",
+                    "confidence": 0.91,
+                    "bbox": [0.4, 0.3, 0.8, 0.4],
+                    "coordinate_space": "normalized_xyxy",
+                    "extraction_source": "rule",
+                }],
+            })
+        else:
+            payload["tables"] = []
         payload["warnings"] = []
         return ExtractionResultV1.model_validate(payload)
 
@@ -124,6 +163,9 @@ async def test_auditor_is_read_only(import_api):
     assert (await client.get(
         f"/api/v1/payroll-imports/{import_id}/fields", headers=auditor
     )).status_code == 200
+    assert (await client.get(
+        f"/api/v1/payroll-imports/{import_id}/tables", headers=auditor
+    )).status_code == 200
     assert (await client.post(
         "/api/v1/payroll-imports", headers=auditor,
         files={"file": ("denied.png", PNG, "image/png")},
@@ -138,6 +180,9 @@ async def test_employee_has_no_import_access(import_api):
     client, _storage, _reader = import_api
     employee = bearer(await login_as(client, UserRoleType.EMPLOYEE))
     assert (await client.get("/api/v1/payroll-imports", headers=employee)).status_code == 403
+    assert (await client.get(
+        f"/api/v1/payroll-imports/{uuid4()}/tables", headers=employee
+    )).status_code == 403
     assert (await client.post(
         "/api/v1/payroll-imports", headers=employee,
         files={"file": ("denied.png", PNG, "image/png")},
@@ -170,6 +215,9 @@ async def test_system_admin_has_no_implicit_import_access(
     token = AuthenticationService().create_access_token(user)
     assert (await client.get(
         "/api/v1/payroll-imports", headers=bearer(token)
+    )).status_code == 403
+    assert (await client.get(
+        f"/api/v1/payroll-imports/{uuid4()}/tables", headers=bearer(token)
     )).status_code == 403
 
 
@@ -213,12 +261,67 @@ async def test_cross_organization_ids_are_404_non_disclosing(
     assert (await client.get(
         f"/api/v1/payroll-imports/{import_id}/fields", headers=outsider_headers
     )).status_code == 404
+    assert (await client.get(
+        f"/api/v1/payroll-imports/{import_id}/tables", headers=outsider_headers
+    )).status_code == 404
+    assert (await client.get(
+        f"/api/v1/payroll-imports/{import_id}/tables/{uuid4()}",
+        headers=outsider_headers,
+    )).status_code == 404
     assert (await client.post(
         f"/api/v1/payroll-imports/{import_id}/process", headers=outsider_headers
     )).status_code == 404
     listing = await client.get("/api/v1/payroll-imports", headers=outsider_headers)
     assert listing.status_code == 200
     assert listing.json()["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_table_read_api_preserves_raw_evidence_and_rbac(import_api):
+    client, _storage, reader = import_api
+    reader.include_tables = True
+    writer = bearer(await login_as(client, UserRoleType.PAYROLL_ADMIN))
+    uploaded = await client.post(
+        "/api/v1/payroll-imports", headers=writer,
+        files={"file": ("table.png", PNG, "image/png")},
+    )
+    import_id = uploaded.json()["id"]
+    processed = await client.post(
+        f"/api/v1/payroll-imports/{import_id}/process", headers=writer,
+    )
+    assert processed.status_code == 200, processed.text
+    assert len(reader.calls) == 1
+
+    for role in (
+        UserRoleType.PAYROLL_ADMIN, UserRoleType.HR_ADMIN, UserRoleType.AUDITOR,
+    ):
+        role_headers = bearer(await login_as(client, role))
+        response = await client.get(
+            f"/api/v1/payroll-imports/{import_id}/tables",
+            headers=role_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["count"] == 1
+        role_table_id = response.json()["items"][0]["id"]
+        assert (await client.get(
+            f"/api/v1/payroll-imports/{import_id}/tables/{role_table_id}",
+            headers=role_headers,
+        )).status_code == 200
+
+    listing = await client.get(
+        f"/api/v1/payroll-imports/{import_id}/tables", headers=writer,
+    )
+    table_id = listing.json()["items"][0]["id"]
+    detail = await client.get(
+        f"/api/v1/payroll-imports/{import_id}/tables/{table_id}", headers=writer,
+    )
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert [row["row_index"] for row in body["rows"]] == [0, 1]
+    assert Decimal(body["rows"][0]["cells"][0]["confidence"]) == Decimal("0.87")
+    assert body["rows"][0]["cells"][0]["bbox"] == ["0.1", "0.2", "0.3", "0.4"]
+    assert body["rows"][1]["cells"][0]["raw_value"] is None
+    assert body["rows"][1]["cells"][1]["raw_value"] == "14.000,00-"
 
 
 @pytest.mark.asyncio

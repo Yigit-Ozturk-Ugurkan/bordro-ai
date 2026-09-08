@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     payroll_document_max_upload_bytes: int = Field(
         default=25 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024
     )
+    payroll_import_max_tables: int = Field(default=20, ge=1, le=100)
+    payroll_import_max_rows_per_table: int = Field(default=2000, ge=1, le=10000)
+    payroll_import_max_columns_per_table: int = Field(default=100, ge=1, le=500)
+    payroll_import_max_cells_per_table: int = Field(default=100000, ge=1, le=500000)
+    payroll_import_max_cell_value_chars: int = Field(default=10000, ge=1, le=100000)
     general_reader_base_url: str = "http://127.0.0.1:8010"
     general_reader_client_id: str = ""
     general_reader_shared_secret: SecretStr | None = None
