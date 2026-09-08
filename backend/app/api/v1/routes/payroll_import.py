@@ -52,6 +52,15 @@ from app.schemas.payroll_tax_rebuild import (
     PayrollTaxRebuildList,
     PayrollTaxRebuildRead,
 )
+from app.schemas.payroll_detail_mapping import (
+    PayrollDetailCorrectionRead,
+    PayrollDetailCorrectionRequest,
+    PayrollDetailFinalizeRequest,
+    PayrollDetailMaterializationRead,
+    PayrollDetailReviewRead,
+    PayrollDetailSnapshotRead,
+    PayrollMappedDetailList,
+)
 from app.services.auth.authentication import AuthenticatedUser
 from app.services.imports.payroll_import_service import PayrollImportService
 from app.services.imports.payroll_adapter_service import PayrollAdapterService
@@ -67,6 +76,7 @@ from app.services.taxation.payroll_tax_sync_service import (
 from app.services.taxation.payroll_tax_rebuild_service import (
     PayrollTaxLedgerRebuildService,
 )
+from app.services.imports.payroll_detail_mapping_service import PayrollDetailMappingService
 from app.storage.document_storage import DocumentStorage
 
 router = APIRouter(prefix="/api/v1/payroll-imports", tags=["payroll-imports"])
@@ -158,6 +168,102 @@ async def get_payroll_import_table(
     reader: GeneralReaderClient = Depends(get_general_reader_client),
 ) -> PayrollImportTableRead:
     return await service(session, storage, reader).table(user, import_id, table_id)
+
+
+@router.post("/{import_id}/detail-mapping", response_model=PayrollMappedDetailList)
+async def map_payroll_import_details(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*APPROVAL_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollMappedDetailList:
+    return await PayrollDetailMappingService(session).run(user, import_id)
+
+
+@router.get("/{import_id}/mapped-details", response_model=PayrollMappedDetailList)
+async def get_payroll_import_mapped_details(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollMappedDetailList:
+    return await PayrollDetailMappingService(session).mapped(user, import_id)
+
+
+@router.get("/{import_id}/detail-review", response_model=PayrollDetailReviewRead)
+async def get_payroll_import_detail_review(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailReviewRead:
+    return await PayrollDetailMappingService(session).review(user, import_id)
+
+
+@router.post(
+    "/{import_id}/detail-review/rows/{mapped_detail_id}",
+    response_model=PayrollDetailCorrectionRead,
+)
+async def correct_payroll_import_detail(
+    import_id: UUID,
+    mapped_detail_id: UUID,
+    request: PayrollDetailCorrectionRequest,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailCorrectionRead:
+    return await PayrollDetailMappingService(session).correct(
+        user, import_id, mapped_detail_id, request,
+    )
+
+
+@router.post(
+    "/{import_id}/detail-review/finalize", response_model=PayrollDetailSnapshotRead,
+)
+async def finalize_payroll_import_detail_review(
+    import_id: UUID,
+    request: PayrollDetailFinalizeRequest,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailSnapshotRead:
+    return await PayrollDetailMappingService(session).finalize(
+        user, import_id, request.expected_row_version,
+    )
+
+
+@router.get(
+    "/{import_id}/detail-snapshots/{snapshot_id}",
+    response_model=PayrollDetailSnapshotRead,
+)
+async def get_payroll_import_detail_snapshot(
+    import_id: UUID,
+    snapshot_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailSnapshotRead:
+    return await PayrollDetailMappingService(session).snapshot(
+        user, import_id, snapshot_id,
+    )
+
+
+@router.post(
+    "/{import_id}/materialization/details",
+    response_model=PayrollDetailMaterializationRead,
+)
+async def materialize_payroll_import_details(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*APPROVAL_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailMaterializationRead:
+    return await PayrollDetailMappingService(session).materialize(user, import_id)
+
+
+@router.get(
+    "/{import_id}/materialization/details",
+    response_model=PayrollDetailMaterializationRead,
+)
+async def get_materialized_payroll_import_details(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*READ_ROLES)),
+    session: AsyncSession = Depends(get_db),
+) -> PayrollDetailMaterializationRead:
+    return await PayrollDetailMappingService(session).materialized(user, import_id)
 
 
 @router.post("/{import_id}/process", response_model=PayrollImportRead)

@@ -265,6 +265,10 @@ class PayrollImportTableRow(UUIDPrimaryKeyMixin, Base):
         UniqueConstraint(
             "id", "organization_id", name="uq_payroll_import_table_row_id_org",
         ),
+        UniqueConstraint(
+            "id", "table_id", "organization_id",
+            name="uq_payroll_import_table_row_table_org",
+        ),
         CheckConstraint("row_index >= 0", name="ck_payroll_import_table_row_index"),
         CheckConstraint("page_number >= 1", name="ck_payroll_import_table_row_page"),
     )

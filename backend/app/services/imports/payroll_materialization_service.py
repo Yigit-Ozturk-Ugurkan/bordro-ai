@@ -273,6 +273,8 @@ class PayrollMaterializationService:
             ruleset_version=run.ruleset_version, decision=approval.decision,
             decision_reason=approval.decision_reason,
             acknowledged_warning_result_ids=acknowledged_ids,
+            detail_snapshot_id=approval.detail_snapshot_id,
+            detail_snapshot_checksum=approval.detail_snapshot_checksum,
         )
         if not hmac.compare_digest(
             approval.approval_checksum, expected_approval_checksum,

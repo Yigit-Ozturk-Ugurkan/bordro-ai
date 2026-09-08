@@ -10,6 +10,15 @@ from app.models.payroll_detail import (
     PayrollDeduction,
     PayrollEarning,
 )
+from app.models.payroll_detail_mapping import (
+    PayrollDetailMapping,
+    PayrollImportDetailCorrection,
+    PayrollImportDetailMaterialization,
+    PayrollImportDetailReview,
+    PayrollImportDetailSnapshot,
+    PayrollImportDetailSnapshotRow,
+    PayrollImportMappedDetail,
+)
 from app.models.payroll_materialization import PayrollImportMaterialization
 from app.models.payroll_tax_sync import PayrollTaxLedgerSync
 from app.models.payroll_tax_rebuild import (
@@ -63,6 +72,13 @@ __all__ = [
     "PayrollEarning",
     "PayrollDeduction",
     "PayrollAbsence",
+    "PayrollDetailMapping",
+    "PayrollImportMappedDetail",
+    "PayrollImportDetailReview",
+    "PayrollImportDetailCorrection",
+    "PayrollImportDetailSnapshot",
+    "PayrollImportDetailSnapshotRow",
+    "PayrollImportDetailMaterialization",
     "PayrollImport",
     "PayrollImportDocument",
     "PayrollImportField",

@@ -140,3 +140,23 @@ class PayrollApprovalStatus(StrEnum):
     NOT_DECIDED = "NOT_DECIDED"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+
+
+class PayrollDetailType(StrEnum):
+    EARNING = "EARNING"
+    DEDUCTION = "DEDUCTION"
+    ABSENCE = "ABSENCE"
+    UNMAPPED = "UNMAPPED"
+
+
+class PayrollDetailMappingStatus(StrEnum):
+    MAPPED = "MAPPED"
+    UNMAPPED = "UNMAPPED"
+    AMBIGUOUS = "AMBIGUOUS"
+    PARSE_FAILED = "PARSE_FAILED"
+
+
+class PayrollDetailReviewStatus(StrEnum):
+    IN_PROGRESS = "IN_PROGRESS"
+    READY_FOR_SNAPSHOT = "READY_FOR_SNAPSHOT"
+    SNAPSHOTTED = "SNAPSHOTTED"

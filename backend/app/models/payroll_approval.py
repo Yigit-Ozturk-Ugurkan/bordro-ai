@@ -44,7 +44,16 @@ class PayrollImportApproval(UUIDPrimaryKeyMixin, Base):
              "payroll_import_validation_runs.organization_id"],
             name="fk_import_approval_validation_scope", ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["detail_snapshot_id", "organization_id", "payroll_import_id"],
+            ["payroll_import_detail_snapshots.id",
+             "payroll_import_detail_snapshots.organization_id",
+             "payroll_import_detail_snapshots.payroll_import_id"],
+            name="fk_import_approval_detail_snapshot_scope", ondelete="RESTRICT",
+        ),
         UniqueConstraint("validation_run_id", name="uq_import_approval_validation_run"),
+        UniqueConstraint("id", "organization_id", "payroll_import_id",
+                         name="uq_import_approval_detail_scope"),
         UniqueConstraint(
             "id", "payroll_import_id", "review_snapshot_id", "validation_run_id",
             "organization_id", name="uq_import_approval_materialization_scope",
@@ -63,6 +72,14 @@ class PayrollImportApproval(UUIDPrimaryKeyMixin, Base):
             name="ck_import_approval_checksum",
         ),
         CheckConstraint(
+            "(detail_snapshot_id IS NULL) = (detail_snapshot_checksum IS NULL)",
+            name="ck_import_approval_detail_snapshot_complete",
+        ),
+        CheckConstraint(
+            "detail_snapshot_checksum IS NULL OR length(detail_snapshot_checksum) = 64",
+            name="ck_import_approval_detail_snapshot_checksum",
+        ),
+        CheckConstraint(
             "jsonb_typeof(acknowledged_warning_result_ids) = 'array'",
             name="ck_import_approval_warning_ids_array",
         ),
@@ -79,6 +96,8 @@ class PayrollImportApproval(UUIDPrimaryKeyMixin, Base):
     payroll_import_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     review_snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     validation_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    detail_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    detail_snapshot_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
     snapshot_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
     validation_result_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
     validation_ruleset_version: Mapped[int] = mapped_column(Integer, nullable=False)

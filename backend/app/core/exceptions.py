@@ -106,6 +106,29 @@ class PayrollImportTableNotFoundError(NotFoundError):
     default_message = "Payroll import table not found"
 
 
+class PayrollDetailStateConflictError(BordroError):
+    status_code = 409
+    code = "DETAIL_STATE_CONFLICT"
+    default_message = "Payroll detail evidence conflicts with this operation"
+
+
+class PayrollDetailNotReadyError(BordroError):
+    status_code = 422
+    code = "DETAIL_NOT_READY"
+    default_message = "Payroll detail review is not ready"
+
+
+class PayrollDetailNotFoundError(NotFoundError):
+    code = "DETAIL_NOT_FOUND"
+    default_message = "Payroll detail evidence not found"
+
+
+class PayrollDetailIntegrityError(BordroError):
+    status_code = 409
+    code = "DETAIL_INTEGRITY_FAILED"
+    default_message = "Payroll detail evidence failed integrity verification"
+
+
 class PayrollImportStateConflictError(BordroError):
     status_code = 409
     code = "IMPORT_STATE_CONFLICT"

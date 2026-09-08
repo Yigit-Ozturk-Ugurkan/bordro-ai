@@ -57,6 +57,10 @@ class PayrollImportMaterialization(UUIDPrimaryKeyMixin, Base):
         UniqueConstraint("approval_id", name="uq_materialization_approval"),
         UniqueConstraint("payroll_version_id", name="uq_materialization_payroll_version"),
         UniqueConstraint(
+            "id", "organization_id", "payroll_import_id", "payroll_id",
+            "payroll_version_id", name="uq_materialization_detail_scope",
+        ),
+        UniqueConstraint(
             "id", "organization_id", "payroll_id", "payroll_version_id",
             name="uq_materialization_tax_sync_scope",
         ),

@@ -28,10 +28,12 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     String,
     text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -40,7 +42,56 @@ from app.db.base import Base
 from app.models.base import UUIDPrimaryKeyMixin
 
 
-class PayrollEarning(UUIDPrimaryKeyMixin, Base):
+def _provenance_constraints(kind: str) -> tuple:
+    return (
+        ForeignKeyConstraint(
+            ["source_import_id", "organization_id"],
+            ["payroll_imports.id", "payroll_imports.organization_id"],
+            name=f"fk_payroll_{kind}_source_import_org", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_table_id", "organization_id"],
+            ["payroll_import_tables.id", "payroll_import_tables.organization_id"],
+            name=f"fk_payroll_{kind}_source_table_org", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_row_id", "source_table_id", "organization_id"],
+            ["payroll_import_table_rows.id", "payroll_import_table_rows.table_id", "payroll_import_table_rows.organization_id"],
+            name=f"fk_payroll_{kind}_source_row_org", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["detail_snapshot_row_id", "organization_id"],
+            ["payroll_import_detail_snapshot_rows.id", "payroll_import_detail_snapshot_rows.organization_id"],
+            name=f"fk_payroll_{kind}_snapshot_row_org", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["detail_materialization_id", "organization_id", "payroll_version_id"],
+            ["payroll_import_detail_materializations.id", "payroll_import_detail_materializations.organization_id", "payroll_import_detail_materializations.payroll_version_id"],
+            name=f"fk_payroll_{kind}_detail_materialization_scope", ondelete="RESTRICT",
+        ),
+        UniqueConstraint("detail_snapshot_row_id", name=f"uq_payroll_{kind}_snapshot_row"),
+        CheckConstraint(
+            "(detail_materialization_id IS NULL AND detail_snapshot_row_id IS NULL "
+            "AND source_import_id IS NULL AND source_table_id IS NULL "
+            "AND source_row_id IS NULL AND organization_id IS NULL) OR "
+            "(detail_materialization_id IS NOT NULL AND detail_snapshot_row_id IS NOT NULL "
+            "AND source_import_id IS NOT NULL AND source_table_id IS NOT NULL "
+            "AND source_row_id IS NOT NULL AND organization_id IS NOT NULL)",
+            name=f"ck_payroll_{kind}_provenance_complete",
+        ),
+    )
+
+
+class PayrollDetailProvenanceMixin:
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_table_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_row_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    detail_snapshot_row_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    detail_materialization_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class PayrollEarning(PayrollDetailProvenanceMixin, UUIDPrimaryKeyMixin, Base):
     """
     A single earning line within a PayrollVersion.
 
@@ -81,7 +132,7 @@ class PayrollEarning(UUIDPrimaryKeyMixin, Base):
             "payroll_version_id",
             "code",
         ),
-    )
+    ) + _provenance_constraints("earning")
 
     payroll_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -146,7 +197,7 @@ class PayrollEarning(UUIDPrimaryKeyMixin, Base):
     )
 
 
-class PayrollDeduction(UUIDPrimaryKeyMixin, Base):
+class PayrollDeduction(PayrollDetailProvenanceMixin, UUIDPrimaryKeyMixin, Base):
     """
     A single deduction line within a PayrollVersion.
 
@@ -187,7 +238,7 @@ class PayrollDeduction(UUIDPrimaryKeyMixin, Base):
             "payroll_version_id",
             "code",
         ),
-    )
+    ) + _provenance_constraints("deduction")
 
     payroll_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -248,7 +299,7 @@ class PayrollDeduction(UUIDPrimaryKeyMixin, Base):
     )
 
 
-class PayrollAbsence(UUIDPrimaryKeyMixin, Base):
+class PayrollAbsence(PayrollDetailProvenanceMixin, UUIDPrimaryKeyMixin, Base):
     """
     A single absence record within a PayrollVersion.
 
@@ -278,7 +329,7 @@ class PayrollAbsence(UUIDPrimaryKeyMixin, Base):
             "ix_payroll_absences_version_id",
             "payroll_version_id",
         ),
-    )
+    ) + _provenance_constraints("absence")
 
     payroll_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

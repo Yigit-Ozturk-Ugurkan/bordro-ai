@@ -10,6 +10,10 @@ from app.models.payroll_approval import (
     PayrollImportValidationAcknowledgement,
 )
 from app.models.payroll_import import PayrollImport
+from app.models.payroll_import import PayrollImportTable, PayrollImportTableRow
+from app.models.payroll_detail_mapping import (
+    PayrollImportDetailReview, PayrollImportDetailSnapshot,
+)
 from app.models.payroll_review import PayrollImportReview, PayrollImportReviewSnapshot
 from app.models.payroll_validation import (
     PayrollImportValidationResult,
@@ -39,6 +43,29 @@ class PayrollApprovalRepository:
             PayrollImportReviewSnapshot.organization_id == organization_id,
             PayrollImportReviewSnapshot.payroll_import_id == import_id,
         )).scalar_one_or_none()
+
+    def staged_detail_count(self, organization_id: UUID, import_id: UUID) -> int:
+        return len(self._session.execute(
+            select(PayrollImportTableRow.id)
+            .join(PayrollImportTable, PayrollImportTable.id == PayrollImportTableRow.table_id)
+            .where(PayrollImportTable.organization_id == organization_id,
+                   PayrollImportTable.payroll_import_id == import_id)
+        ).all())
+
+    def current_detail_snapshot(self, organization_id: UUID, import_id: UUID):
+        snapshot_id = self._session.scalar(select(
+            PayrollImportDetailReview.current_snapshot_id,
+        ).where(
+            PayrollImportDetailReview.organization_id == organization_id,
+            PayrollImportDetailReview.payroll_import_id == import_id,
+        ))
+        if snapshot_id is None:
+            return None
+        return self._session.execute(select(PayrollImportDetailSnapshot).where(
+            PayrollImportDetailSnapshot.id == snapshot_id,
+            PayrollImportDetailSnapshot.organization_id == organization_id,
+            PayrollImportDetailSnapshot.payroll_import_id == import_id,
+        ).options(selectinload(PayrollImportDetailSnapshot.rows))).scalar_one_or_none()
 
     def get_run(self, organization_id: UUID, import_id: UUID, run_id: UUID,
                 *, for_update: bool = False):

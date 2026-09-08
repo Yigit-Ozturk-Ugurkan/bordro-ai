@@ -16,6 +16,7 @@ from app.core.exceptions import (
     PayrollApprovalValidationNotReadyError,
     PayrollApprovalWarningsUnacknowledgedError,
     PayrollImportNotFoundError,
+    PayrollDetailNotReadyError,
     PayrollReviewSnapshotNotFoundError,
     PayrollValidationRunNotFoundError,
     WarningAlreadyAcknowledgedError,
@@ -92,6 +93,9 @@ class PayrollApprovalService:
                       reason: str | None) -> PayrollApprovalStateRead:
         def work(sync):
             repository = PayrollApprovalRepository(sync)
+            item = repository.get_import(user.organization_id, import_id)
+            if item is None:
+                raise PayrollImportNotFoundError()
             run, snapshot = self._locked_context(repository, user, import_id, run_id)
             self.verify_context(run, snapshot)
             if repository.decision_for_run(user.organization_id, run_id) is not None:
@@ -114,6 +118,30 @@ class PayrollApprovalService:
                 if missing:
                     raise PayrollApprovalWarningsUnacknowledgedError()
 
+            detail_snapshot = None
+            staged_detail_count = repository.staged_detail_count(
+                user.organization_id, import_id,
+            )
+            if decision == PayrollApprovalDecision.APPROVED and staged_detail_count:
+                detail_snapshot = repository.current_detail_snapshot(
+                    user.organization_id, import_id,
+                )
+                if (detail_snapshot is None
+                        or detail_snapshot.row_count != staged_detail_count):
+                    raise PayrollDetailNotReadyError(
+                        "Reviewed detail snapshot is required before approval"
+                    )
+                from app.services.imports.payroll_detail_mapping_service import (
+                    PayrollDetailMappingService,
+                )
+                if (not PayrollDetailMappingService.verify_snapshot(detail_snapshot)
+                        or not PayrollDetailMappingService.verify_sources(
+                            item, detail_snapshot,
+                        )):
+                    raise PayrollDetailNotReadyError(
+                        "Reviewed detail snapshot failed integrity verification"
+                    )
+
             checksum = self.approval_checksum(
                 organization_id=user.organization_id, import_id=import_id,
                 snapshot_id=snapshot.id, snapshot_checksum=snapshot.snapshot_checksum,
@@ -122,12 +150,20 @@ class PayrollApprovalService:
                 ruleset_version=run.ruleset_version, decision=decision,
                 decision_reason=reason,
                 acknowledged_warning_result_ids=acknowledged_ids,
+                detail_snapshot_id=(detail_snapshot.id if detail_snapshot else None),
+                detail_snapshot_checksum=(
+                    detail_snapshot.snapshot_checksum if detail_snapshot else None
+                ),
             )
             now = datetime.now(timezone.utc)
             repository.add_decision(PayrollImportApproval(
                 id=uuid4(), organization_id=user.organization_id,
                 payroll_import_id=import_id, review_snapshot_id=snapshot.id,
                 validation_run_id=run.id, snapshot_checksum=snapshot.snapshot_checksum,
+                detail_snapshot_id=(detail_snapshot.id if detail_snapshot else None),
+                detail_snapshot_checksum=(
+                    detail_snapshot.snapshot_checksum if detail_snapshot else None
+                ),
                 validation_result_checksum=run.result_checksum,
                 validation_ruleset_version=run.ruleset_version,
                 decision=decision, decision_reason=reason,
@@ -245,7 +281,9 @@ class PayrollApprovalService:
                           validation_run_id: UUID, validation_result_checksum: str,
                           ruleset_version: int, decision: PayrollApprovalDecision,
                           decision_reason: str | None,
-                          acknowledged_warning_result_ids: tuple[UUID, ...]) -> str:
+                          acknowledged_warning_result_ids: tuple[UUID, ...],
+                          detail_snapshot_id: UUID | None = None,
+                          detail_snapshot_checksum: str | None = None) -> str:
         payload = {
             "acknowledged_warning_result_ids": sorted(
                 str(value) for value in acknowledged_warning_result_ids
@@ -260,6 +298,9 @@ class PayrollApprovalService:
             "validation_result_checksum": validation_result_checksum,
             "validation_run_id": str(validation_run_id),
         }
+        if detail_snapshot_id is not None:
+            payload["detail_snapshot_id"] = str(detail_snapshot_id)
+            payload["detail_snapshot_checksum"] = detail_snapshot_checksum
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True,
                                separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -311,6 +352,8 @@ class PayrollApprovalService:
         return PayrollApprovalDecisionRead(
             id=row.id, snapshot_id=row.review_snapshot_id,
             validation_run_id=row.validation_run_id,
+            detail_snapshot_id=row.detail_snapshot_id,
+            detail_snapshot_checksum=row.detail_snapshot_checksum,
             snapshot_checksum=row.snapshot_checksum,
             validation_result_checksum=row.validation_result_checksum,
             validation_ruleset_version=row.validation_ruleset_version,

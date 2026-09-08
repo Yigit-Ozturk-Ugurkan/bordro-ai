@@ -65,6 +65,8 @@ class PayrollApprovalDecisionRead(ApprovalModel):
     id: UUID
     snapshot_id: UUID
     validation_run_id: UUID
+    detail_snapshot_id: UUID | None
+    detail_snapshot_checksum: str | None
     snapshot_checksum: str
     validation_result_checksum: str
     validation_ruleset_version: int
