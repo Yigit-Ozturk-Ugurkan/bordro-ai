@@ -24,6 +24,9 @@ export function AppRoutes() {
           <Route path="/payrolls" element={<PayrollListPage />} />
           <Route path="/payrolls/:year/:month" element={<PayrollDetailPage />} />
           <Route element={<RoleRoute allowed={["PAYROLL_ADMIN", "HR_ADMIN", "AUDITOR"]} />}>
+            <Route path="/employees/:employeeId/payrolls/:year/:month" element={<PayrollDetailPage />} />
+          </Route>
+          <Route element={<RoleRoute allowed={["PAYROLL_ADMIN", "HR_ADMIN", "AUDITOR"]} />}>
             <Route path="/imports" element={<PayrollImportsPage />} />
             <Route path="/imports/:importId" element={<PayrollImportReviewPage />} />
           </Route>

@@ -262,6 +262,6 @@ describe("V2.2A payroll import experience", () => {
     expect(importMocks.materializePayroll).toHaveBeenCalledWith("import-1", "approval-1");
     await user.click(await screen.findByRole("button", { name: "Detayları Bordroya Aktar" }));
     expect(importMocks.materializeDetails).toHaveBeenCalledAfter(importMocks.materializePayroll);
-    expect(await screen.findByRole("link", { name: /Bordroyu Gör/ })).toHaveAttribute("href", "/payrolls/2026/8");
+    expect(await screen.findByRole("link", { name: /Bordroyu Gör/ })).toHaveAttribute("href", "/employees/employee-1/payrolls/2026/8");
   });
 });

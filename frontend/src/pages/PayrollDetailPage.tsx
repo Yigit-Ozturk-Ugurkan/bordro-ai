@@ -1,10 +1,19 @@
-import { ArrowLeft, CalendarCheck, CalendarX, CircleDollarSign, ReceiptText } from "lucide-react";
+import { ArrowLeft, Banknote, CalendarCheck, CalendarX, CircleDollarSign, ReceiptText } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/client";
-import { getPayrollComparison, getPayrollDetail, getTaxStatus } from "../api/payroll";
-import type { PayrollComparison, PayrollDetail, TaxStatus } from "../api/types";
+import {
+  getDashboard,
+  getEmployeeDashboard,
+  getEmployeePayrollComparison,
+  getEmployeePayrollDetail,
+  getEmployeeTaxStatus,
+  getPayrollComparison,
+  getPayrollDetail,
+  getTaxStatus,
+} from "../api/payroll";
+import type { DashboardData, PayrollComparison, PayrollDetail, TaxStatus } from "../api/types";
 import { BreakdownTable } from "../components/BreakdownTable";
 import { ErrorState, PageLoader } from "../components/AsyncState";
 import { MetricCard } from "../components/MetricCard";
@@ -17,12 +26,14 @@ interface DetailState {
   detail: PayrollDetail;
   tax: TaxStatus;
   comparison: PayrollComparison | null;
+  dashboard: DashboardData;
 }
 
 export function PayrollDetailPage() {
   const params = useParams();
   const year = Number(params.year);
   const month = Number(params.month);
+  const employeeId = params.employeeId;
   const validPeriod = Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12;
   const [data, setData] = useState<DetailState | null>(null);
   const [error, setError] = useState<FriendlyError | null>(null);
@@ -39,25 +50,35 @@ export function PayrollDetailPage() {
     setError(null);
     setData(null);
     try {
+      const detailRequest = employeeId
+        ? getEmployeePayrollDetail(employeeId, year, month)
+        : getPayrollDetail(year, month);
+      const taxRequest = employeeId
+        ? getEmployeeTaxStatus(employeeId, year, month)
+        : getTaxStatus(year, month);
+      const dashboardRequest = employeeId
+        ? getEmployeeDashboard(employeeId, year, month)
+        : getDashboard(year, month);
       const comparisonRequest =
         month === 1
           ? Promise.resolve(null)
-          : getPayrollComparison(year, month).catch((requestError: unknown) => {
+          : (employeeId
+              ? getEmployeePayrollComparison(employeeId, year, month)
+              : getPayrollComparison(year, month)
+            ).catch((requestError: unknown) => {
               if (requestError instanceof ApiError && [400, 404].includes(requestError.status)) return null;
               throw requestError;
             });
-      const [detail, tax, comparison] = await Promise.all([
-        getPayrollDetail(year, month),
-        getTaxStatus(year, month),
-        comparisonRequest,
+      const [detail, tax, dashboard, comparison] = await Promise.all([
+        detailRequest, taxRequest, dashboardRequest, comparisonRequest,
       ]);
-      setData({ detail, tax, comparison });
+      setData({ detail, tax, dashboard, comparison });
     } catch (requestError) {
       setError(friendlyError(requestError));
     } finally {
       setLoading(false);
     }
-  }, [month, validPeriod, year]);
+  }, [employeeId, month, validPeriod, year]);
 
   useEffect(() => {
     void load();
@@ -67,13 +88,13 @@ export function PayrollDetailPage() {
   if (error) return <ErrorState {...error} onRetry={validPeriod ? () => void load() : undefined} />;
   if (!data) return null;
 
-  const { detail, tax, comparison } = data;
+  const { detail, tax, dashboard, comparison } = data;
 
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/payrolls" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-teal-700">
-          <ArrowLeft size={17} aria-hidden="true" /> Bordrolarıma dön
+        <Link to={employeeId ? "/imports" : "/payrolls"} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-teal-700">
+          <ArrowLeft size={17} aria-hidden="true" /> {employeeId ? "İçe aktarımlara dön" : "Bordrolarıma dön"}
         </Link>
         <div className="mt-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
@@ -88,9 +109,12 @@ export function PayrollDetailPage() {
         </div>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard label="Brüt ücret" value={formatMoney(detail.gross)} icon={CircleDollarSign} tone="teal" />
+        <MetricCard label="Toplam kazanç" value={formatMoney(detail.earnings.total)} icon={CircleDollarSign} />
+        <MetricCard label="Toplam kesinti" value={formatMoney(detail.deductions.total)} icon={ReceiptText} tone="rose" />
         <MetricCard label="Net ücret" value={formatMoney(detail.net)} icon={ReceiptText} />
+        <MetricCard label="Gelir vergisi" value={formatMoney(dashboard.tax.income_tax)} icon={Banknote} tone="amber" />
         <MetricCard label="Ücretli gün" value={formatDays(detail.attendance.paid_days)} icon={CalendarCheck} />
         <MetricCard label="Eksik gün" value={formatDays(detail.attendance.missing_days)} icon={CalendarX} tone="amber" />
       </section>
@@ -112,7 +136,7 @@ export function PayrollDetailPage() {
         />
       </div>
 
-      {detail.attendance.absences.length > 0 && (
+      {detail.attendance.absences.length > 0 ? (
         <section className="rounded-2xl border border-amber-100 bg-amber-50/70 p-5 sm:p-6">
           <h2 className="font-bold text-slate-900">Eksik Gün Kayıtları</h2>
           <div className="mt-4 divide-y divide-amber-100">
@@ -127,6 +151,11 @@ export function PayrollDetailPage() {
             ))}
           </div>
         </section>
+      ) : (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="font-bold text-slate-900">Devamsızlık Kayıtları</h2>
+          <p className="mt-3 text-sm text-slate-500">Bu bordroda devamsızlık kaydı bulunmuyor.</p>
+        </section>
       )}
 
       <TaxPanel
@@ -137,7 +166,14 @@ export function PayrollDetailPage() {
         monthlyBase={tax.monthly_taxable_base}
       />
 
-      {comparison && <ComparisonPanel comparison={comparison} />}
+      {comparison ? (
+        <ComparisonPanel comparison={comparison} />
+      ) : (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="font-bold text-slate-900">Önceki Dönem Karşılaştırması</h2>
+          <p className="mt-3 text-sm text-slate-500">Karşılaştırılacak önceki bordro bulunamadı.</p>
+        </section>
+      )}
     </div>
   );
 }

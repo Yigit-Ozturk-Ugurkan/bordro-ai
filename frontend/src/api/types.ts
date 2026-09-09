@@ -143,6 +143,7 @@ export interface PayrollComparison {
     delta_percent: string | null;
     by_code: Record<string, ComparisonAmounts>;
   };
+  income_tax: ComparisonAmounts & { delta_percent: string | null };
   attendance: {
     previous_missing_days: string;
     current_missing_days: string;

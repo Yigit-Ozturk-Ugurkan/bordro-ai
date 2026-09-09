@@ -128,7 +128,9 @@ export function PayrollImportReviewPage() {
 
   const payrollPath = useMemo(() => {
     const materialized = data?.materialization?.materialization;
-    return materialized ? `/payrolls/${materialized.period_year}/${materialized.period_month}` : null;
+    return materialized
+      ? `/employees/${materialized.employee_id}/payrolls/${materialized.period_year}/${materialized.period_month}`
+      : null;
   }, [data]);
 
   if (!data && !loadError) return <PageLoader label="İnceleme çalışma alanı yükleniyor" />;

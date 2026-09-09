@@ -1,21 +1,3 @@
-const moneyFormatter = new Intl.NumberFormat("tr-TR", {
-  style: "currency",
-  currency: "TRY",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const decimalFormatter = new Intl.NumberFormat("tr-TR", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-
-const percentFormatter = new Intl.NumberFormat("tr-TR", {
-  style: "percent",
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-
 export const monthNames = [
   "Ocak",
   "Şubat",
@@ -31,24 +13,49 @@ export const monthNames = [
   "Aralık",
 ];
 
+function formatDecimalString(value: string, minimumFractionDigits = 0): string {
+  const match = value.trim().match(/^([+-]?)(\d+)(?:\.(\d+))?$/);
+  if (!match) return value;
+  const [, sign, rawInteger, rawFraction = ""] = match;
+  const integer = rawInteger.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  let fraction = rawFraction;
+  while (fraction.length > minimumFractionDigits && fraction.endsWith("0")) {
+    fraction = fraction.slice(0, -1);
+  }
+  fraction = fraction.padEnd(minimumFractionDigits, "0");
+  const prefix = sign === "-" ? "-" : "";
+  return `${prefix}${integer}${fraction ? `,${fraction}` : ""}`;
+}
+
+function rateAsPercentage(value: string): string {
+  const match = value.trim().match(/^([+-]?)(\d+)(?:\.(\d+))?$/);
+  if (!match) return value;
+  const [, sign, integer, fraction = ""] = match;
+  const digits = `${integer}${fraction}`.padEnd(integer.length + 2, "0");
+  const decimalIndex = integer.length + 2;
+  const scaledInteger = digits.slice(0, decimalIndex);
+  const scaledFraction = digits.slice(decimalIndex);
+  return `${sign}${scaledInteger}${scaledFraction ? `.${scaledFraction}` : ""}`;
+}
+
 export function formatMoney(value: string | null | undefined): string {
   if (value == null || value === "") return "—";
-  return moneyFormatter.format(Number(value));
+  return `${formatDecimalString(value, 2)} ₺`;
 }
 
 export function formatDays(value: string | null | undefined): string {
   if (value == null || value === "") return "—";
-  return `${decimalFormatter.format(Number(value))} gün`;
+  return `${formatDecimalString(value)} gün`;
 }
 
 export function formatRate(value: string | null | undefined): string {
   if (value == null || value === "") return "—";
-  return percentFormatter.format(Number(value));
+  return `${formatDecimalString(rateAsPercentage(value))}%`;
 }
 
 export function formatPercentage(value: string | null | undefined): string {
   if (value == null || value === "") return "—";
-  return `${decimalFormatter.format(Number(value))}%`;
+  return `${formatDecimalString(value)}%`;
 }
 
 export function formatPeriod(year: number, month: number): string {
@@ -57,10 +64,11 @@ export function formatPeriod(year: number, month: number): string {
 
 export function decimalSign(value: string | null | undefined): -1 | 0 | 1 {
   if (!value) return 0;
-  const sign = Number(value);
-  if (sign < 0) return -1;
-  if (sign > 0) return 1;
-  return 0;
+  const normalized = value.trim();
+  const magnitude = normalized.replace(/^[+-]/, "").replace(/[.]/g, "");
+  if (!/^\d+$/.test(magnitude) || /^0+$/.test(magnitude)) return 0;
+  if (normalized.startsWith("-")) return -1;
+  return 1;
 }
 
 export function roleLabel(role: string): string {

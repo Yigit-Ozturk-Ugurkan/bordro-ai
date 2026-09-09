@@ -69,7 +69,7 @@ function pageTitle(pathname: string): string {
   if (pathname === "/imports/upload") return "Bordro Yükle";
   if (pathname.startsWith("/imports/")) return "Bordro İncele";
   if (pathname === "/imports") return "Bordro İçe Aktarma";
-  if (pathname.startsWith("/payrolls/")) return "Bordro Detayı";
+  if (pathname.startsWith("/payrolls/") || pathname.includes("/payrolls/")) return "Bordro Detayı";
   if (pathname === "/payrolls") return "Bordrolarım";
   return "Genel Bakış";
 }

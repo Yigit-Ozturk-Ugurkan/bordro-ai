@@ -50,6 +50,13 @@ function CodeChanges({
 }
 
 export function ComparisonPanel({ comparison }: { comparison: PayrollComparison }) {
+  const summary = [
+    { label: "Net Ücret", values: comparison.net },
+    { label: "Toplam Kazanç", values: comparison.earnings },
+    { label: "Toplam Kesinti", values: comparison.deductions },
+    { label: "Gelir Vergisi", values: comparison.income_tax },
+  ];
+
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:p-6">
       <div className="flex items-start gap-3">
@@ -62,21 +69,22 @@ export function ComparisonPanel({ comparison }: { comparison: PayrollComparison 
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl bg-slate-50 p-4">
-          <p className="text-xs text-slate-500">Önceki net</p>
-          <p className="mt-2 font-bold tabular-nums text-slate-900">{formatMoney(comparison.net.previous)}</p>
-        </div>
-        <div className="rounded-xl bg-slate-50 p-4">
-          <p className="text-xs text-slate-500">Güncel net</p>
-          <p className="mt-2 font-bold tabular-nums text-slate-900">{formatMoney(comparison.net.current)}</p>
-        </div>
-        <div className="rounded-xl bg-slate-50 p-4">
-          <p className="text-xs text-slate-500">Net fark</p>
-          <p className="mt-2 text-sm">
-            <DeltaValue value={comparison.net.delta} percentage={comparison.net.delta_percent} />
-          </p>
-        </div>
+      <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr><th className="px-4 py-3">Kalem</th><th className="px-4 py-3">Güncel dönem</th><th className="px-4 py-3">Önceki dönem</th><th className="px-4 py-3">Fark</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {summary.map(({ label, values }) => (
+              <tr key={label}>
+                <th scope="row" className="whitespace-nowrap px-4 py-3 font-semibold text-slate-800">{label}</th>
+                <td className="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-slate-900">{formatMoney(values.current)}</td>
+                <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-600">{formatMoney(values.previous)}</td>
+                <td className="whitespace-nowrap px-4 py-3"><DeltaValue value={values.delta} percentage={values.delta_percent} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
