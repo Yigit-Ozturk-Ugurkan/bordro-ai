@@ -4,7 +4,7 @@ Payroll Comparison Service V1.
 Provides deterministic, fact-based comparison between two payroll versions.
 
 Scope discipline - this service reports WHAT changed, never WHY:
-- previous/current net, earnings, deductions
+- previous/current net, earnings, deductions, income tax
 - absolute and percentage deltas
 - missing days delta
 - per-code earning and deduction deltas
@@ -62,6 +62,12 @@ class PayrollComparisonResult:
         deductions_delta: Decimal,
         deductions_delta_percent: Optional[Decimal],
         #
+        # Income tax
+        previous_income_tax: Decimal,
+        current_income_tax: Decimal,
+        income_tax_delta: Decimal,
+        income_tax_delta_percent: Optional[Decimal],
+        #
         # Attendance
         previous_missing_days: Decimal,
         current_missing_days: Decimal,
@@ -94,6 +100,12 @@ class PayrollComparisonResult:
         self.current_total_deductions = current_total_deductions
         self.deductions_delta = deductions_delta
         self.deductions_delta_percent = deductions_delta_percent
+
+        # Income tax
+        self.previous_income_tax = previous_income_tax
+        self.current_income_tax = current_income_tax
+        self.income_tax_delta = income_tax_delta
+        self.income_tax_delta_percent = income_tax_delta_percent
 
         # Attendance
         self.previous_missing_days = previous_missing_days
@@ -156,6 +168,16 @@ class PayrollComparisonResult:
                     else None
                 ),
                 "by_code": self._codes_to_dict(self.deduction_deltas),
+            },
+            "income_tax": {
+                "previous": money_str(self.previous_income_tax),
+                "current": money_str(self.current_income_tax),
+                "delta": money_str(self.income_tax_delta),
+                "delta_percent": (
+                    str(self.income_tax_delta_percent)
+                    if self.income_tax_delta_percent is not None
+                    else None
+                ),
             },
             "attendance": {
                 "previous_missing_days": str(self.previous_missing_days),
@@ -231,6 +253,12 @@ class PayrollComparisonService:
         deductions_delta = curr_deductions - prev_deductions
         deductions_delta_percent = percent_change(deductions_delta, prev_deductions)
 
+        # INCOME TAX
+        prev_income_tax = quantize_money(prev_version.income_tax)
+        curr_income_tax = quantize_money(curr_version.income_tax)
+        income_tax_delta = curr_income_tax - prev_income_tax
+        income_tax_delta_percent = percent_change(income_tax_delta, prev_income_tax)
+
         # ATTENDANCE
         prev_missing_days = quantize_days(prev_version.missing_days)
         curr_missing_days = quantize_days(curr_version.missing_days)
@@ -263,6 +291,10 @@ class PayrollComparisonService:
             current_total_deductions=curr_deductions,
             deductions_delta=deductions_delta,
             deductions_delta_percent=deductions_delta_percent,
+            previous_income_tax=prev_income_tax,
+            current_income_tax=curr_income_tax,
+            income_tax_delta=income_tax_delta,
+            income_tax_delta_percent=income_tax_delta_percent,
             previous_missing_days=prev_missing_days,
             current_missing_days=curr_missing_days,
             missing_days_delta=missing_days_delta,

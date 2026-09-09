@@ -177,6 +177,13 @@ class TestPayrollComparisonBasic:
         assert result.net_delta == Decimal("8500.00")
         assert result.net_delta_percent == Decimal("10.00")
 
+        # Income tax is read directly from each PayrollVersion and uses the
+        # same Decimal delta/percentage semantics as the existing sections.
+        assert result.previous_income_tax == Decimal("5000.00")
+        assert result.current_income_tax == Decimal("5500.00")
+        assert result.income_tax_delta == Decimal("500.00")
+        assert result.income_tax_delta_percent == Decimal("10.00")
+
     def test_earnings_and_deductions_deltas(
         self,
         db_session: Session,
@@ -312,6 +319,43 @@ class TestPayrollComparisonPercentages:
         assert result.current_total_earnings == Decimal("100000.00")
         assert result.earnings_delta_percent is None
 
+    def test_income_tax_delta_percent_zero_previous(
+        self,
+        db_session: Session,
+        org_with_employee,
+        rule_set_2026,
+    ):
+        """Income-tax percent uses the existing zero-safe helper semantics."""
+        org, employee = org_with_employee
+
+        pv_1 = create_payroll_version(
+            db_session,
+            org.id,
+            employee.id,
+            2026,
+            1,
+            rule_set_2026.id,
+            income_tax=Decimal("0.00"),
+        )
+        pv_2 = create_payroll_version(
+            db_session,
+            org.id,
+            employee.id,
+            2026,
+            2,
+            rule_set_2026.id,
+            income_tax=Decimal("2500.00"),
+        )
+
+        result = PayrollComparisonService(db_session).compare_payroll_versions(
+            pv_1.id, pv_2.id,
+        )
+
+        assert result.previous_income_tax == Decimal("0.00")
+        assert result.current_income_tax == Decimal("2500.00")
+        assert result.income_tax_delta == Decimal("2500.00")
+        assert result.income_tax_delta_percent is None
+
 
 class TestPayrollComparisonErrorHandling:
     """Test error handling."""
@@ -439,6 +483,7 @@ class TestPayrollComparisonSerialization:
         assert "net" in result_dict
         assert "earnings" in result_dict
         assert "deductions" in result_dict
+        assert "income_tax" in result_dict
         assert "attendance" in result_dict
 
         # Verify all values are strings (JSON-safe)
@@ -446,3 +491,13 @@ class TestPayrollComparisonSerialization:
         assert isinstance(result_dict["net"]["delta"], str)
         assert result_dict["net"]["previous"] == "85000.00"
         assert result_dict["net"]["delta"] == "8500.00"
+        assert result_dict["income_tax"] == {
+            "previous": "5000.00",
+            "current": "5500.00",
+            "delta": "500.00",
+            "delta_percent": "10.00",
+        }
+        assert all(
+            isinstance(value, str)
+            for value in result_dict["income_tax"].values()
+        )

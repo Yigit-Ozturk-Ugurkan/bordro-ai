@@ -35,6 +35,10 @@ class ComparisonNetSchema(BaseModel):
     model_config = {"json_encoders": {Decimal: lambda v: str(v)}}
 
 
+class ComparisonIncomeTaxSchema(ComparisonNetSchema):
+    """Previous/current/delta values for authoritative payroll income tax."""
+
+
 class ComparisonEarningsSchema(BaseModel):
     """Earnings comparison data."""
 
@@ -93,6 +97,9 @@ class PayrollComparisonReadSchema(BaseModel):
     earnings: ComparisonEarningsSchema = Field(..., description="Earnings comparison")
     deductions: ComparisonDeductionsSchema = Field(
         ..., description="Deductions comparison"
+    )
+    income_tax: ComparisonIncomeTaxSchema = Field(
+        ..., description="Authoritative PayrollVersion income-tax comparison"
     )
     attendance: ComparisonAttendanceSchema = Field(
         ..., description="Attendance comparison"

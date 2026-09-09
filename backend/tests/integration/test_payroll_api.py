@@ -363,6 +363,45 @@ class TestPayrollComparisonAPI:
             == expected_deductions(FEBRUARY) - expected_deductions(JANUARY)
         )
 
+    async def test_february_income_tax_comparison_contract(
+        self, seeded_api_client: AsyncClient, demo_employee_id: UUID
+    ) -> None:
+        """Organization-scoped comparison exposes authoritative income tax."""
+        response = await seeded_api_client.get(
+            f"/api/v1/employees/{demo_employee_id}/payrolls/2026/2/comparison"
+        )
+
+        assert response.status_code == 200
+        income_tax = response.json()["income_tax"]
+        expected_delta = EXPECTED_INCOME_TAX[2] - EXPECTED_INCOME_TAX[1]
+        expected_percent = (
+            expected_delta / EXPECTED_INCOME_TAX[1] * Decimal("100")
+        ).quantize(Decimal("0.01"))
+
+        assert income_tax == {
+            "previous": str(EXPECTED_INCOME_TAX[1]),
+            "current": str(EXPECTED_INCOME_TAX[2]),
+            "delta": str(expected_delta),
+            "delta_percent": str(expected_percent),
+        }
+        assert all(isinstance(value, str) for value in income_tax.values())
+
+    async def test_employee_self_income_tax_comparison_contract(
+        self, seeded_api_client: AsyncClient
+    ) -> None:
+        """Employee-self comparison returns the identical income-tax shape."""
+        response = await seeded_api_client.get(
+            "/api/v1/me/payrolls/2026/2/comparison"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["income_tax"] == {
+            "previous": str(EXPECTED_INCOME_TAX[1]),
+            "current": str(EXPECTED_INCOME_TAX[2]),
+            "delta": str(EXPECTED_INCOME_TAX[2] - EXPECTED_INCOME_TAX[1]),
+            "delta_percent": "16.67",
+        }
+
     async def test_missing_days_delta(
         self, seeded_api_client: AsyncClient, demo_employee_id: UUID
     ) -> None:
