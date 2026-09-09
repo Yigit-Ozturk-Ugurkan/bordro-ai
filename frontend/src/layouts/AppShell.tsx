@@ -5,6 +5,7 @@ import {
   LogOut,
   Menu,
   ShieldCheck,
+  Upload,
   X,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -12,16 +13,30 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { BrandMark } from "../components/BrandMark";
 import { roleLabel } from "../utils/formatters";
+import type { UserRole } from "../api/types";
 
-const navigation = [
+const navigation: Array<{
+  to: string;
+  label: string;
+  icon: typeof FileText;
+  roles?: readonly UserRole[];
+}> = [
   { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
   { to: "/payrolls", label: "Bordrolarım", icon: FileText },
+  {
+    to: "/imports",
+    label: "Bordro İçe Aktarma",
+    icon: Upload,
+    roles: ["PAYROLL_ADMIN", "HR_ADMIN", "AUDITOR"],
+  },
 ];
 
-function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+function Navigation({ roles, onNavigate }: { roles: UserRole[]; onNavigate?: () => void }) {
   return (
     <nav className="mt-9 space-y-1.5" aria-label="Ana menü">
-      {navigation.map(({ to, label, icon: Icon }) => (
+      {navigation
+        .filter((item) => !item.roles || roles.some((role) => item.roles?.includes(role)))
+        .map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
@@ -45,12 +60,15 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
             </>
           )}
         </NavLink>
-      ))}
+        ))}
     </nav>
   );
 }
 
 function pageTitle(pathname: string): string {
+  if (pathname === "/imports/upload") return "Bordro Yükle";
+  if (pathname.startsWith("/imports/")) return "Bordro İncele";
+  if (pathname === "/imports") return "Bordro İçe Aktarma";
   if (pathname.startsWith("/payrolls/")) return "Bordro Detayı";
   if (pathname === "/payrolls") return "Bordrolarım";
   return "Genel Bakış";
@@ -67,7 +85,7 @@ export function AppShell() {
     <div className="min-h-screen bg-slate-50">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-slate-950 px-5 py-6 lg:flex">
         <BrandMark />
-        <Navigation />
+        <Navigation roles={user?.roles ?? []} />
         <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-teal-300">
             <ShieldCheck size={15} aria-hidden="true" />
@@ -98,7 +116,7 @@ export function AppShell() {
                 <X size={20} />
               </button>
             </div>
-            <Navigation onNavigate={() => setDrawerOpen(false)} />
+            <Navigation roles={user?.roles ?? []} onNavigate={() => setDrawerOpen(false)} />
           </aside>
         </div>
       )}

@@ -8,7 +8,11 @@ const API_BASE_URL = (
 export const SESSION_EXPIRED_EVENT = "bordro-ai:session-expired";
 
 export class ApiError extends Error {
-  constructor(public readonly status: number) {
+  constructor(
+    public readonly status: number,
+    public readonly detail?: string,
+    public readonly code?: string,
+  ) {
     super(`API request failed with status ${status}`);
     this.name = "ApiError";
   }
@@ -17,7 +21,21 @@ export class ApiError extends Error {
 let refreshRequest: Promise<boolean> | null = null;
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new ApiError(response.status);
+  if (!response.ok) {
+    let detail: string | undefined;
+    let code: string | undefined;
+    try {
+      const body = (await response.json()) as unknown;
+      if (body && typeof body === "object") {
+        const payload = body as Record<string, unknown>;
+        if (typeof payload.detail === "string") detail = payload.detail;
+        if (typeof payload.code === "string") code = payload.code;
+      }
+    } catch {
+      // Non-JSON server failures intentionally fall back to a status-only error.
+    }
+    throw new ApiError(response.status, detail, code);
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -60,7 +78,11 @@ async function request<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body && !headers.has("Content-Type")) {
+  if (
+    init.body &&
+    !(typeof FormData !== "undefined" && init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
 

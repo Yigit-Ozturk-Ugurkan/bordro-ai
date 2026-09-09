@@ -6,7 +6,10 @@ import { LoginPage } from "../pages/LoginPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PayrollDetailPage } from "../pages/PayrollDetailPage";
 import { PayrollListPage } from "../pages/PayrollListPage";
-import { ProtectedRoute, PublicOnlyRoute } from "./RouteGuards";
+import { PayrollImportsPage } from "../pages/PayrollImportsPage";
+import { PayrollUploadPage } from "../pages/PayrollUploadPage";
+import { PayrollImportReviewPage } from "../pages/PayrollImportReviewPage";
+import { ProtectedRoute, PublicOnlyRoute, RoleRoute } from "./RouteGuards";
 
 export function AppRoutes() {
   return (
@@ -20,6 +23,13 @@ export function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/payrolls" element={<PayrollListPage />} />
           <Route path="/payrolls/:year/:month" element={<PayrollDetailPage />} />
+          <Route element={<RoleRoute allowed={["PAYROLL_ADMIN", "HR_ADMIN", "AUDITOR"]} />}>
+            <Route path="/imports" element={<PayrollImportsPage />} />
+            <Route path="/imports/:importId" element={<PayrollImportReviewPage />} />
+          </Route>
+          <Route element={<RoleRoute allowed={["PAYROLL_ADMIN", "HR_ADMIN"]} />}>
+            <Route path="/imports/upload" element={<PayrollUploadPage />} />
+          </Route>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>
