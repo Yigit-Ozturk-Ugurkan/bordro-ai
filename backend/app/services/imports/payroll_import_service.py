@@ -10,6 +10,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -21,19 +22,38 @@ from app.core.exceptions import (
     GeneralReaderContractInvalidError,
     ImportProcessingFailedError,
     PayrollImportNotFoundError,
+    PayrollImportStateConflictError,
     PayrollImportTableNotFoundError,
 )
 from app.integrations.general_reader.client import GeneralReaderClient
 from app.integrations.general_reader.schemas import ExtractionResultV1, FieldV1, TableV1
 from app.models.enums import PayrollImportFieldReviewStatus, PayrollImportStatus
+from app.models.payroll_approval import PayrollImportApproval
+from app.models.payroll_detail_mapping import (
+    PayrollImportDetailCorrection,
+    PayrollImportDetailMaterialization,
+    PayrollImportDetailReview,
+    PayrollImportDetailSnapshot,
+    PayrollImportMappedDetail,
+)
 from app.models.payroll_import import (
     PayrollImport,
     PayrollImportDocument,
     PayrollImportField,
+    PayrollImportMappedField,
+    PayrollImportMappingIssue,
     PayrollImportTable,
     PayrollImportTableCell,
     PayrollImportTableRow,
 )
+from app.models.payroll_materialization import PayrollImportMaterialization
+from app.models.payroll_review import (
+    PayrollImportFieldCorrection,
+    PayrollImportReview,
+    PayrollImportReviewSnapshot,
+)
+from app.models.payroll_tax_sync import PayrollTaxLedgerSync
+from app.models.payroll_validation import PayrollImportValidationRun
 from app.repositories.payroll_import_repository import PayrollImportRepository
 from app.schemas.payroll_import import (
     PayrollImportDocumentRead,
@@ -49,6 +69,18 @@ from app.services.imports.state_machine import transition
 from app.storage.document_storage import DocumentStorage
 
 logger = logging.getLogger(__name__)
+
+_REPROCESS_PROTECTED_MODELS = (
+    PayrollImportFieldCorrection,
+    PayrollImportDetailCorrection,
+    PayrollImportReviewSnapshot,
+    PayrollImportDetailSnapshot,
+    PayrollImportValidationRun,
+    PayrollImportApproval,
+    PayrollImportMaterialization,
+    PayrollImportDetailMaterialization,
+    PayrollTaxLedgerSync,
+)
 
 
 class PayrollImportService:
@@ -136,13 +168,25 @@ class PayrollImportService:
 
     async def process(self, user: AuthenticatedUser,
                       import_id: UUID) -> PayrollImportRead:
+        return await self._process(user, import_id, reprocess=False)
+
+    async def reprocess(self, user: AuthenticatedUser,
+                        import_id: UUID) -> PayrollImportRead:
+        """Refresh extraction only while all downstream evidence is mutable."""
+        return await self._process(user, import_id, reprocess=True)
+
+    async def _process(self, user: AuthenticatedUser, import_id: UUID,
+                       *, reprocess: bool) -> PayrollImportRead:
         def start(sync_session: Session) -> tuple[str, str, str, str]:
             item = PayrollImportRepository(sync_session).get_for_update(
                 user.organization_id, import_id
             )
             if item is None:
                 raise PayrollImportNotFoundError()
-            transition(item, PayrollImportStatus.PROCESSING)
+            if reprocess:
+                self._prepare_reprocess(sync_session, item)
+            else:
+                transition(item, PayrollImportStatus.PROCESSING)
             item.processing_attempt += 1
             item.processing_started_at = datetime.now(timezone.utc)
             item.processed_at = None
@@ -186,6 +230,38 @@ class PayrollImportService:
             if isinstance(exc, BordroError):
                 raise
             raise safe_error from exc
+
+    @staticmethod
+    def _prepare_reprocess(sync_session: Session, item: PayrollImport) -> None:
+        if item.status != PayrollImportStatus.REVIEW_REQUIRED:
+            raise PayrollImportStateConflictError()
+        for model in _REPROCESS_PROTECTED_MODELS:
+            artifact_id = sync_session.scalar(
+                select(model.id).where(
+                    model.organization_id == item.organization_id,
+                    model.payroll_import_id == item.id,
+                ).limit(1)
+            )
+            if artifact_id is not None:
+                raise PayrollImportStateConflictError()
+
+        # These rows are replaceable pre-snapshot workflow state. Their
+        # correction/snapshot dependencies were proved absent above.
+        for model in (
+            PayrollImportDetailReview,
+            PayrollImportReview,
+            PayrollImportMappedDetail,
+            PayrollImportMappedField,
+            PayrollImportMappingIssue,
+        ):
+            sync_session.execute(delete(model).where(
+                model.organization_id == item.organization_id,
+                model.payroll_import_id == item.id,
+            ))
+
+        # This is deliberately not a global state-machine transition. Only
+        # the guarded, pre-snapshot reprocess operation may make this move.
+        item.status = PayrollImportStatus.PROCESSING
 
     async def list(self, user: AuthenticatedUser) -> PayrollImportList:
         def work(sync_session: Session) -> PayrollImportList:

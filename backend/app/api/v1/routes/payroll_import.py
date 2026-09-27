@@ -277,6 +277,17 @@ async def process_payroll_import(
     return await service(session, storage, reader).process(user, import_id)
 
 
+@router.post("/{import_id}/reprocess", response_model=PayrollImportRead)
+async def reprocess_payroll_import(
+    import_id: UUID,
+    user: AuthenticatedUser = Depends(require_roles(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_db),
+    storage: DocumentStorage = Depends(get_document_storage),
+    reader: GeneralReaderClient = Depends(get_general_reader_client),
+) -> PayrollImportRead:
+    return await service(session, storage, reader).reprocess(user, import_id)
+
+
 @router.post("/{import_id}/map", response_model=PayrollImportMappingSummary)
 async def map_payroll_import(
     import_id: UUID,

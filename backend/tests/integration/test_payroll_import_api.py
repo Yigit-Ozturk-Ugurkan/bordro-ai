@@ -147,6 +147,32 @@ async def test_writer_roles_can_multipart_upload_read_and_process(import_api, ro
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("role", [UserRoleType.PAYROLL_ADMIN, UserRoleType.HR_ADMIN])
+async def test_writer_roles_can_reprocess_review_required_import(import_api, role):
+    client, _storage, reader = import_api
+    reader.include_tables = True
+    headers = bearer(await login_as(client, role))
+    uploaded = await client.post(
+        "/api/v1/payroll-imports", headers=headers,
+        files={"file": ("reprocess.png", PNG, "image/png")},
+    )
+    import_id = uploaded.json()["id"]
+    first = await client.post(
+        f"/api/v1/payroll-imports/{import_id}/process", headers=headers,
+    )
+    assert first.status_code == 200
+    assert first.json()["status"] == "REVIEW_REQUIRED"
+
+    refreshed = await client.post(
+        f"/api/v1/payroll-imports/{import_id}/reprocess", headers=headers,
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["status"] == "REVIEW_REQUIRED"
+    assert refreshed.json()["processing_attempt"] == 2
+    assert len(reader.calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_auditor_is_read_only(import_api):
     client, _storage, _reader = import_api
     writer = bearer(await login_as(client, UserRoleType.PAYROLL_ADMIN))
@@ -172,6 +198,9 @@ async def test_auditor_is_read_only(import_api):
     )).status_code == 403
     assert (await client.post(
         f"/api/v1/payroll-imports/{import_id}/process", headers=auditor
+    )).status_code == 403
+    assert (await client.post(
+        f"/api/v1/payroll-imports/{import_id}/reprocess", headers=auditor
     )).status_code == 403
 
 
@@ -270,6 +299,9 @@ async def test_cross_organization_ids_are_404_non_disclosing(
     )).status_code == 404
     assert (await client.post(
         f"/api/v1/payroll-imports/{import_id}/process", headers=outsider_headers
+    )).status_code == 404
+    assert (await client.post(
+        f"/api/v1/payroll-imports/{import_id}/reprocess", headers=outsider_headers
     )).status_code == 404
     listing = await client.get("/api/v1/payroll-imports", headers=outsider_headers)
     assert listing.status_code == 200

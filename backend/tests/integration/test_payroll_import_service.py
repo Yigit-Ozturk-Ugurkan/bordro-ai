@@ -26,12 +26,26 @@ from app.models.organization import Organization
 from app.models.payroll import PayrollVersion
 from app.models.payroll_import import (
     PayrollImport,
+    PayrollImportField,
+    PayrollImportMappedField,
+    PayrollImportMappingIssue,
     PayrollImportTable,
     PayrollImportTableRow,
 )
+from app.models.payroll_review import PayrollImportReview
 from app.models.user import User
+from app.schemas.payroll_import import (
+    PayrollReviewCorrectionRequest,
+    PayrollReviewFinalizeRequest,
+)
 from app.services.auth.authentication import AuthenticatedUser
+from app.services.imports.payroll_adapter_service import PayrollAdapterService
 from app.services.imports.payroll_import_service import PayrollImportService
+from app.services.imports.payroll_materialization_service import (
+    PayrollMaterializationService,
+)
+from app.services.imports.payroll_review_service import PayrollReviewService
+from app.services.imports.state_machine import VALID_TRANSITIONS
 from app.storage.document_storage import LocalDocumentStorage
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"service-test-document"
@@ -424,6 +438,166 @@ async def test_retry_replaces_equivalent_then_changed_machine_table_staging(
     assert sum(len(row.cells) for row in latest_detail.rows) == 5
     assert latest.items[0].source_checksum != first_checksum
     assert latest_detail.rows[0].cells[2].raw_value == "15.000,00-"
+
+
+@pytest.mark.asyncio
+async def test_pre_snapshot_reprocess_replaces_staging_and_resets_mutable_review(
+    async_db_session: AsyncSession, tmp_path: Path
+):
+    user = await create_user(async_db_session, "reprocess")
+    reader = FakeReader()
+    reader.payload = rich_table_payload()
+    subject = service(async_db_session, tmp_path, reader)
+    created = await subject.create(user, upload("reprocess.png"))
+    first = await subject.process(user, created.id)
+    assert first.status == PayrollImportStatus.REVIEW_REQUIRED
+
+    mapping = await PayrollAdapterService(async_db_session).run(user, created.id)
+    assert mapping.source_field_count > 0
+    assert mapping.missing_count > 0
+    review = await PayrollReviewService(async_db_session).start(user, created.id)
+    assert review.import_id == created.id
+
+    first_fields = await subject.fields(user, created.id)
+    first_tables = await subject.tables(user, created.id)
+    first_table = await subject.table(user, created.id, first_tables.items[0].id)
+    original_document_id = first.document.id
+    original_hash = first.content_sha256
+    original_storage_key = await _storage_key(
+        async_db_session, user.organization_id, created.id,
+    )
+
+    changed = rich_table_payload()
+    changed["fields"] = changed["fields"][:1]
+    changed["missing_fields"] = []
+    reader.payload = changed
+
+    refreshed = await subject.reprocess(user, created.id)
+    assert refreshed.status == PayrollImportStatus.REVIEW_REQUIRED
+    assert refreshed.processing_attempt == 2
+    assert refreshed.document.id == original_document_id
+    assert refreshed.content_sha256 == original_hash
+    assert await _storage_key(
+        async_db_session, user.organization_id, created.id,
+    ) == original_storage_key
+    assert [call["content"] for call in reader.calls] == [PNG, PNG]
+
+    current_fields = await subject.fields(user, created.id)
+    current_tables = await subject.tables(user, created.id)
+    current_table = await subject.table(user, created.id, current_tables.items[0].id)
+    assert current_fields.count == 1
+    assert current_tables.count == 1
+    assert current_table.row_count == 2
+    assert current_table.id != first_table.id
+
+    def mutable_state(sync: Session):
+        return (
+            sync.scalar(select(func.count()).select_from(PayrollImportMappedField).where(
+                PayrollImportMappedField.payroll_import_id == created.id,
+            )),
+            sync.scalar(select(func.count()).select_from(PayrollImportMappingIssue).where(
+                PayrollImportMappingIssue.payroll_import_id == created.id,
+            )),
+            sync.scalar(select(func.count()).select_from(PayrollImportReview).where(
+                PayrollImportReview.payroll_import_id == created.id,
+            )),
+            sync.scalar(select(func.count()).select_from(PayrollImportField).where(
+                PayrollImportField.id.in_([field.id for field in first_fields.items]),
+            )),
+            sync.scalar(select(PayrollImportTable).where(
+                PayrollImportTable.id == first_table.id,
+            )),
+        )
+
+    mapped_count, issue_count, review_count, old_field_count, old_table = (
+        await async_db_session.run_sync(mutable_state)
+    )
+    assert (mapped_count, issue_count, review_count) == (0, 0, 0)
+    assert old_field_count == 0
+    assert old_table is None
+
+
+async def _assert_reprocess_blocked(
+    session: AsyncSession, tmp_path: Path, user: AuthenticatedUser, import_id,
+) -> None:
+    reader = FakeReader()
+    subject = service(session, tmp_path, reader)
+    before = await subject.get(user, import_id)
+    with pytest.raises(PayrollImportStateConflictError):
+        await subject.reprocess(user, import_id)
+    after = await subject.get(user, import_id)
+    assert reader.calls == []
+    assert after.status == before.status
+    assert after.processing_attempt == before.processing_attempt
+
+
+@pytest.mark.asyncio
+async def test_reprocess_is_blocked_by_field_correction(
+    async_db_session: AsyncSession, tmp_path: Path
+):
+    from tests.integration.test_payroll_review import mapped_by_source, seed_review_import
+
+    user, item, _ = await async_db_session.run_sync(seed_review_import)
+    await PayrollAdapterService(async_db_session).run(user, item.id)
+    review = await PayrollReviewService(async_db_session).start(user, item.id)
+    rows = await mapped_by_source(async_db_session, user, item.id)
+    await PayrollReviewService(async_db_session).correct(
+        user, item.id, rows["source-net_pay"].id,
+        PayrollReviewCorrectionRequest(
+            expected_review_version=review.version,
+            value="1000.00",
+            reason="Reprocess protection fixture",
+        ),
+    )
+    await _assert_reprocess_blocked(async_db_session, tmp_path, user, item.id)
+
+
+@pytest.mark.asyncio
+async def test_reprocess_is_blocked_by_review_snapshot(
+    async_db_session: AsyncSession, tmp_path: Path
+):
+    from tests.integration.test_payroll_review import seed_review_import
+
+    user, item, _ = await async_db_session.run_sync(seed_review_import)
+    await PayrollAdapterService(async_db_session).run(user, item.id)
+    review = await PayrollReviewService(async_db_session).start(user, item.id)
+    await PayrollReviewService(async_db_session).finalize(
+        user, item.id,
+        PayrollReviewFinalizeRequest(expected_review_version=review.version),
+    )
+    await _assert_reprocess_blocked(async_db_session, tmp_path, user, item.id)
+
+
+@pytest.mark.asyncio
+async def test_reprocess_is_blocked_by_validation(
+    async_db_session: AsyncSession, tmp_path: Path
+):
+    from tests.integration.test_payroll_approval import ready_run
+
+    user, item, _snapshot, _run = await ready_run(async_db_session)
+    await _assert_reprocess_blocked(async_db_session, tmp_path, user, item.id)
+
+
+@pytest.mark.asyncio
+async def test_reprocess_is_blocked_by_approval_and_materialization(
+    async_db_session: AsyncSession, tmp_path: Path
+):
+    from tests.integration.test_payroll_materialization import approved_evidence
+
+    user, import_id, _snapshot, _run, approval = await approved_evidence(
+        async_db_session,
+    )
+    await _assert_reprocess_blocked(async_db_session, tmp_path, user, import_id)
+    await PayrollMaterializationService(async_db_session).materialize(
+        user, import_id, approval.id,
+    )
+    await _assert_reprocess_blocked(async_db_session, tmp_path, user, import_id)
+
+
+def test_reprocess_does_not_expand_the_global_state_machine() -> None:
+    assert PayrollImportStatus.PROCESSING not in (
+        VALID_TRANSITIONS[PayrollImportStatus.REVIEW_REQUIRED]
+    )
 
 
 @pytest.mark.asyncio
