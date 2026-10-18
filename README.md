@@ -91,12 +91,14 @@ Frontend kurulum bilgileri için [frontend README](frontend/README.md) dosyasın
 - [Belge içe aktarma](docs/PAYROLL_IMPORT_V21A.md)
 - [Alan eşleştirme](docs/PAYROLL_ADAPTER_V21B.md)
 - [İnsan incelemesi ve snapshot](docs/PAYROLL_REVIEW_V21C.md)
-- [Doğrulama](PAYROLL_VALIDATION_V21D.md)
-- [Onay akışı](PAYROLL_APPROVAL_V21E.md)
-- [Bordroya aktarım](PAYROLL_MATERIALIZATION_V21F.md)
-- [Vergi kayıtlarının senkronizasyonu](PAYROLL_TAX_SYNC_V21G.md)
-- [Kümülatif verginin yeniden oluşturulması](PAYROLL_TAX_REBUILD_V21H.md)
-- [Ürün entegrasyonu](PAYROLL_PRODUCT_INTEGRATION_V22B.md)
+- [Doğrulama](docs/PAYROLL_VALIDATION_V21D.md)
+- [Onay akışı](docs/PAYROLL_APPROVAL_V21E.md)
+- [Bordroya aktarım](docs/PAYROLL_MATERIALIZATION_V21F.md)
+- [Detay verilerinin hazırlanması](docs/PAYROLL_DETAIL_STAGING_V21I.md)
+- [Detay alanlarının eşleştirilmesi](docs/PAYROLL_DETAIL_MAPPING_V21J.md)
+- [Vergi kayıtlarının senkronizasyonu](docs/PAYROLL_TAX_SYNC_V21G.md)
+- [Kümülatif verginin yeniden oluşturulması](docs/PAYROLL_TAX_REBUILD_V21H.md)
+- [Ürün entegrasyonu](docs/PAYROLL_PRODUCT_INTEGRATION_V22B.md)
 
 Dokümanlardaki sürüm numaraları geliştirme aşamalarını belirtir. Eski aşamalarda belirtilen kapsam sınırları sonraki aşamalarda değişmiş olabilir.
 
